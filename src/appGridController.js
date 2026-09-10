@@ -1,0 +1,112 @@
+import Clutter from "gi://Clutter";
+import St from "gi://St";
+
+export class AppGridController {
+    constructor(settings, appDisplay) {
+        this._settings = settings;
+        this._appDisplay = appDisplay;
+        this._origGridOrientation = null;
+        this._origDisplayOrientation = null;
+        this._origSwipeOrientation = null;
+        this._origAdjustment = null;
+        this._origHScrollbarPolicy = null;
+        this._origVScrollbarPolicy = null;
+    }
+
+    enable() {
+        this._patchOrientation();
+    }
+
+    disable() {
+        const appDisplay = this._appDisplay;
+        const grid = appDisplay?._grid;
+        const scrollView = appDisplay?._scrollView;
+        if (!grid?._verticalPatched || !scrollView) return;
+
+        delete grid._verticalPatched;
+        grid.layout_manager.orientation = this._origGridOrientation;
+        appDisplay._orientation = this._origDisplayOrientation;
+        if (appDisplay._swipeTracker)
+            appDisplay._swipeTracker.orientation = this._origSwipeOrientation;
+        appDisplay._adjustment = this._origAdjustment;
+        scrollView.hscrollbar_policy = this._origHScrollbarPolicy;
+        scrollView.vscrollbar_policy = this._origVScrollbarPolicy;
+        grid.queue_relayout();
+    }
+
+    updateOrientation() {
+        const appDisplay = this._appDisplay;
+        const grid = appDisplay?._grid;
+        const scrollView = appDisplay?._scrollView;
+        if (!grid?._verticalPatched || !scrollView) return;
+
+        const vertical =
+            this._settings.get_string("app-grid-scroll-direction") ===
+            "vertical";
+        grid.layout_manager.orientation = vertical
+            ? Clutter.Orientation.VERTICAL
+            : this._origGridOrientation;
+        appDisplay._orientation = vertical
+            ? Clutter.Orientation.VERTICAL
+            : this._origDisplayOrientation;
+        if (appDisplay._swipeTracker)
+            appDisplay._swipeTracker.orientation = vertical
+                ? Clutter.Orientation.VERTICAL
+                : this._origSwipeOrientation;
+        appDisplay._adjustment = vertical
+            ? scrollView.vadjustment
+            : this._origAdjustment;
+        scrollView.hscrollbar_policy = vertical
+            ? St.PolicyType.NEVER
+            : this._origHScrollbarPolicy;
+        scrollView.vscrollbar_policy = vertical
+            ? St.PolicyType.EXTERNAL
+            : this._origVScrollbarPolicy;
+
+        const nPages =
+            typeof grid.nPages === "function"
+                ? grid.nPages()
+                : (grid.nPages ?? 0);
+        if (nPages > 0) {
+            const targetPage = Math.min(grid.currentPage ?? 0, nPages - 1);
+            grid.goToPage(targetPage, false);
+        }
+        grid.queue_relayout();
+    }
+
+    goToPage(step) {
+        const appDisplay = this._appDisplay;
+        const grid = appDisplay?._grid;
+        if (!grid) return;
+
+        const currentPage = grid.currentPage ?? 0;
+        const nPages =
+            typeof grid.nPages === "function"
+                ? grid.nPages()
+                : (grid.nPages ?? 1);
+        if (nPages <= 0) return;
+
+        const newPage = Math.min(Math.max(currentPage + step, 0), nPages - 1);
+        if (
+            newPage !== currentPage &&
+            typeof appDisplay.goToPage === "function"
+        )
+            appDisplay.goToPage(newPage);
+    }
+
+    _patchOrientation() {
+        const grid = this._appDisplay?._grid;
+        const scrollView = this._appDisplay?._scrollView;
+        if (!grid || !scrollView || grid._verticalPatched) return;
+
+        this._origGridOrientation = grid.layout_manager.orientation;
+        this._origDisplayOrientation = this._appDisplay._orientation;
+        this._origSwipeOrientation =
+            this._appDisplay._swipeTracker?.orientation;
+        this._origAdjustment = this._appDisplay._adjustment;
+        this._origHScrollbarPolicy = scrollView.hscrollbar_policy;
+        this._origVScrollbarPolicy = scrollView.vscrollbar_policy;
+        grid._verticalPatched = true;
+        this.updateOrientation();
+    }
+}
