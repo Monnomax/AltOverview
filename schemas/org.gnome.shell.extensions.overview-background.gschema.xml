@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.alt-overview"
+    path="/org/gnome/shell/extensions/alt-overview/">
+
+    <key name="enabled" type="b">
+      <default>true</default>
+      <summary>Увімкнути тло Overview</summary>
+      <description>Показувати зображення шпалери робочого стола як фон в Огляді.</description>
+    </key>
+
+    <key name="brightness" type="i">
+      <range min="-100" max="100" />
+      <default>0</default>
+      <summary>Яскравість</summary>
+      <description>Яскравість фонового зображення в Огляді. 0 — без змін.</description>
+    </key>
+
+    <key name="blur" type="i">
+      <range min="0" max="100" />
+      <default>0</default>
+      <summary>Розмиття</summary>
+      <description>Радіус розмиття фонового зображення в Огляді.</description>
+    </key>
+
+    <key name="saturation" type="d">
+      <range min="0.0" max="2.0" />
+      <default>1.0</default>
+      <summary>Насиченість</summary>
+      <description>Насиченість кольорів фонового зображення в Огляді. 1.0 — без змін, 0.0 — відтінки
+        сірого.</description>
+    </key>
+
+    <key name="grain" type="i">
+      <range min="0" max="100" />
+      <default>20</default>
+      <summary>Зернистість</summary>
+      <description>Інтенсивність зернистості (шуму), накладеної на фонове зображення в Огляді.</description>
+    </key>
+
+    <key name="show-search-entry" type="b">
+      <default>true</default>
+      <summary>Показувати поле пошуку</summary>
+      <description>Якщо вимкнено, поле пошуку в Огляді буде приховане.</description>
+    </key>
+
+    <key name="show-workspaces-thumbnails" type="b">
+      <default>true</default>
+      <summary>Показувати робочі столи</summary>
+      <description>Якщо вимкнено, область робочих столів (смужка-превʼю над AppGrid) прибирається,
+        коли відкрито сітку застосунків. У звичайному режимі перегляду вікон область лишається без
+        змін.</description>
+    </key>
+
+    <key name="workspaces-scroll-direction" type="s">
+      <choices>
+        <choice value="vertical" />
+        <choice value="horizontal" />
+      </choices>
+      <default>"vertical"</default>
+      <summary>Напрямок прокручування для стільниць</summary>
+      <description>Напрямок прокручування коліщатком миші для перемикання робочих столів.</description>
+    </key>
+
+    <key name="workspace-size" type="i">
+      <range min="25" max="100" />
+      <default>100</default>
+      <summary>Розмір стільниці</summary>
+      <description>Розмір області стільниці в Огляді у відсотках від стандартного розміру.</description>
+    </key>
+
+    <key name="app-grid-scroll-direction" type="s">
+      <choices>
+        <choice value="vertical" />
+        <choice value="horizontal" />
+      </choices>
+      <default>"vertical"</default>
+      <summary>Напрямок прокручування для сітки програм</summary>
+      <description>Напрямок прокручування коліщатком миші в сітці застосунків.</description>
+    </key>
+
+    <key name="app-grid-columns" type="i">
+      <range min="5" max="15" />
+      <default>6</default>
+      <summary>Кількість стовбців</summary>
+      <description>Кількість стовбців у сітці застосунків.</description>
+    </key>
+
+    <key name="app-grid-rows" type="i">
+      <range min="3" max="9" />
+      <default>3</default>
+      <summary>Кількість рядків</summary>
+      <description>Кількість рядків у сітці застосунків.</description>
+    </key>
+
+    <key name="app-grid-icon-size" type="s">
+      <choices>
+        <choice value="small" />
+        <choice value="medium" />
+        <choice value="large" />
+        <choice value="extra-large" />
+      </choices>
+      <default>"medium"</default>
+      <summary>Розмір іконок сітки програм</summary>
+      <description>Розмір іконок у сітці застосунків: "small" — 48px, "medium" — 64px, "large" — 80px, "extra-large" — 96px.</description>
+    </key>
+
+    <key name="app-grid-names-visibility" type="s">
+      <choices>
+        <choice value="always" />
+        <choice value="never" />
+        <choice value="hover" />
+      </choices>
+      <default>"always"</default>
+      <summary>Відображення назв програм</summary>
+      <description>Коли показувати підписи з назвами застосунків під іконками в сітці програм: завжди, ніколи, або лише при наведенні вказівника.</description>
+    </key>
+
+    <key name="app-grid-icon-hover-curve" type="s">
+      <choices>
+        <choice value="Back" />
+        <choice value="Bounce" />
+        <choice value="Circ" />
+        <choice value="Cubic" />
+        <choice value="Elastic" />
+        <choice value="Expo" />
+        <choice value="Linear" />
+        <choice value="Quad" />
+        <choice value="Quart" />
+        <choice value="Quint" />
+        <choice value="Sine" />
+      </choices>
+      <default>"Quad"</default>
+      <summary>Крива анімації при наведенні на іконку</summary>
+      <description>Крива переходу (easing), яка використовується для bounce-масштабування іконки при наведенні та відведенні вказівника в сітці програм.</description>
+    </key>
+
+    <key name="app-grid-icon-hover-in-durations" type="a{si}">
+      <default>{}</default>
+      <summary>Швидкість анімації при наведенні (за кривою)</summary>
+      <description>Тривалість (у мілісекундах) переходу іконки до збільшеного масштабу при наведенні вказівника, окремо для кожної кривої анімації (ключ словника — назва кривої). Якщо для обраної кривої запису немає — використовується 200 мс.</description>
+    </key>
+
+    <key name="app-grid-icon-hover-out-durations" type="a{si}">
+      <default>{}</default>
+      <summary>Швидкість анімації при відведенні (за кривою)</summary>
+      <description>Тривалість (у мілісекундах) переходу іконки назад до звичайного розміру при відведенні вказівника, окремо для кожної кривої анімації (ключ словника — назва кривої). Якщо для обраної кривої запису немає — використовується 200 мс.</description>
+    </key>
+
+    <key name="app-grid-icon-press-curve" type="s">
+      <choices>
+        <choice value="Back" />
+        <choice value="Bounce" />
+        <choice value="Circ" />
+        <choice value="Cubic" />
+        <choice value="Elastic" />
+        <choice value="Expo" />
+        <choice value="Linear" />
+        <choice value="Quad" />
+        <choice value="Quart" />
+        <choice value="Quint" />
+        <choice value="Sine" />
+      </choices>
+      <default>"Quad"</default>
+      <summary>Крива анімації при натисканні на іконку</summary>
+      <description>Крива переходу (easing), яка використовується для bounce-масштабування іконки при натисканні та відпусканні кнопки миші в сітці програм.</description>
+    </key>
+
+    <key name="app-grid-icon-press-in-durations" type="a{si}">
+      <default>{}</default>
+      <summary>Швидкість анімації при натисканні (за кривою)</summary>
+      <description>Тривалість (у мілісекундах) переходу іконки до масштабу натискання, поки кнопку миші утримують, окремо для кожної кривої анімації (ключ словника — назва кривої). Якщо для обраної кривої запису немає — використовується 200 мс.</description>
+    </key>
+
+    <key name="app-grid-icon-press-out-durations" type="a{si}">
+      <default>{}</default>
+      <summary>Швидкість анімації при відпусканні (за кривою)</summary>
+      <description>Тривалість (у мілісекундах) переходу іконки назад до звичайного розміру при відпусканні кнопки миші, окремо для кожної кривої анімації (ключ словника — назва кривої). Якщо для обраної кривої запису немає — використовується 200 мс.</description>
+    </key>
+
+    <key name="app-grid-icon-hover-scale" type="d">
+      <range min="0.50" max="1.50" />
+      <default>1.10</default>
+      <summary>Масштаб при наведенні</summary>
+      <description>Множник розміру іконки при наведенні вказівника. 1.0 — без змін.</description>
+    </key>
+
+    <key name="app-grid-icon-press-scale" type="d">
+      <range min="0.50" max="1.50" />
+      <default>1.10</default>
+      <summary>Масштаб при натисканні</summary>
+      <description>Множник розміру іконки при натисканні кнопки миші. 1.0 — без змін.</description>
+    </key>
+
+  </schema>
+</schemalist>
