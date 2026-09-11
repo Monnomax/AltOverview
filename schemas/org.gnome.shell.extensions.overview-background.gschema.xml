@@ -75,6 +75,16 @@
       <description>Показувати кнопку закриття при наведенні на клон вікна в Огляді.</description>
     </key>
 
+    <key name="workspace-tooltip-position" type="s">
+      <choices>
+        <choice value="above" />
+        <choice value="below" />
+      </choices>
+      <default>"above"</default>
+      <summary>Розташування підказки</summary>
+      <description>Розташування підказки відносно іконки.</description>
+    </key>
+
     <key name="app-grid-scroll-direction" type="s">
       <choices>
         <choice value="vertical" />

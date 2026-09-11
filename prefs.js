@@ -302,6 +302,37 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
         closeButtonRow.add_suffix(closeButtonSwitch);
         closeButtonRow.activatable_widget = closeButtonSwitch;
         closeButtonGroup.add(closeButtonRow);
+
+        const tooltipGroup = new Adw.PreferencesGroup({
+            title: _("Підказка"),
+        });
+        page.add(tooltipGroup);
+
+        const tooltipRow = new Adw.ComboRow({
+            title: _("Розташування"),
+            model: new Gtk.StringList({
+                strings: [_("Над іконкою"), _("Під іконкою")],
+            }),
+        });
+
+        const tooltipPositions = ["above", "below"];
+        const currentTooltipPosition = settings.get_string(
+            "workspace-tooltip-position",
+        );
+        const currentTooltipIndex = tooltipPositions.indexOf(
+            currentTooltipPosition,
+        );
+        tooltipRow.set_selected(
+            currentTooltipIndex >= 0 ? currentTooltipIndex : 0,
+        );
+
+        tooltipRow.connect("notify::selected", () => {
+            const value = tooltipPositions[tooltipRow.selected] ?? "above";
+            if (settings.get_string("workspace-tooltip-position") !== value)
+                settings.set_string("workspace-tooltip-position", value);
+        });
+
+        tooltipGroup.add(tooltipRow);
     }
 
     // --- Вкладка "Сітка програм" ---
