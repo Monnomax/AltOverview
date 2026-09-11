@@ -3,9 +3,9 @@ import St from "gi://St";
 import GLib from "gi://GLib";
 
 export class AppGridLayoutController {
-    static PAGE_INDICATOR_BOTTOM_MARGIN = 20;
-    static PAGE_INDICATOR_EDGE_MARGIN = 20;
-    static PAGE_INDICATOR_SPACING = 25;
+    static PAGE_INDICATOR_BOTTOM_MARGIN = 15;
+    static PAGE_INDICATOR_EDGE_MARGIN = 15;
+    static PAGE_INDICATOR_SIZE = 40;
 
     constructor(settings, appDisplay, iconController) {
         this._settings = settings;
@@ -34,125 +34,119 @@ export class AppGridLayoutController {
     }
 
     _patchNavigationButtons() {
-    const appDisplay = this._appDisplay;
+        const appDisplay = this._appDisplay;
 
-    if (!appDisplay)
-        return;
+        if (!appDisplay) return;
 
-    const buttons = [
-        appDisplay._nextPageArrow,
-        appDisplay._prevPageArrow,
-    ].filter(Boolean);
+        const buttons = [
+            appDisplay._nextPageArrow,
+            appDisplay._prevPageArrow,
+        ].filter(Boolean);
 
-    if (buttons.length === 0)
-        return;
+        if (buttons.length === 0) return;
 
-    const parent = buttons[0].get_parent();
+        const parent = buttons[0].get_parent();
 
-    if (!parent)
-        return;
+        if (!parent) return;
 
-    this._navigationButtonsParent = parent;
-    this._navigationButtonsOriginalIndices = buttons.map(button =>
-        parent.get_children().indexOf(button)
-    );
+        this._navigationButtonsParent = parent;
+        this._navigationButtonsOriginalIndices = buttons.map((button) =>
+            parent.get_children().indexOf(button),
+        );
 
-    this._navigationButtonsChangedId = this._settings.connect(
-        "changed::show-app-grid-navigation-buttons",
-        () => this._updateNavigationButtons()
-    );
+        this._navigationButtonsChangedId = this._settings.connect(
+            "changed::show-app-grid-navigation-buttons",
+            () => this._updateNavigationButtons(),
+        );
 
-    this._updateNavigationButtons();
-}
+        this._updateNavigationButtons();
+    }
 
-_updateNavigationButtons() {
-    const appDisplay = this._appDisplay;
-    const parent = this._navigationButtonsParent;
+    _updateNavigationButtons() {
+        const appDisplay = this._appDisplay;
+        const parent = this._navigationButtonsParent;
 
-    if (!appDisplay || !parent)
-        return;
+        if (!appDisplay || !parent) return;
 
-    const buttons = [
-        appDisplay._nextPageArrow,
-        appDisplay._prevPageArrow,
-    ].filter(Boolean);
+        const buttons = [
+            appDisplay._nextPageArrow,
+            appDisplay._prevPageArrow,
+        ].filter(Boolean);
 
-    const showButtons = this._settings.get_boolean(
-        "show-app-grid-navigation-buttons"
-    );
+        const showButtons = this._settings.get_boolean(
+            "show-app-grid-navigation-buttons",
+        );
 
-    if (!showButtons) {
-        for (const button of buttons) {
-            if (button.get_parent() === parent)
-                parent.remove_child(button);
+        if (!showButtons) {
+            for (const button of buttons) {
+                if (button.get_parent() === parent) parent.remove_child(button);
+
+                button.remove_transition("opacity");
+                button.visible = false;
+                button.opacity = 0;
+                button.reactive = false;
+            }
+
+            return;
+        }
+
+        for (let i = 0; i < buttons.length; i++) {
+            const button = buttons[i];
+
+            if (button.get_parent() !== parent) {
+                parent.insert_child_at_index(
+                    button,
+                    this._navigationButtonsOriginalIndices[i],
+                );
+            }
 
             button.remove_transition("opacity");
-            button.visible = false;
-            button.opacity = 0;
-            button.reactive = false;
+            button.visible = true;
+            button.opacity = 255;
+            button.reactive = true;
         }
 
-        return;
+        const layoutManager = parent.layout_manager;
+
+        if (layoutManager?._syncPageIndicatorsVisibility)
+            layoutManager._syncPageIndicatorsVisibility(false);
     }
 
-    for (let i = 0; i < buttons.length; i++) {
-        const button = buttons[i];
-
-        if (button.get_parent() !== parent) {
-            parent.insert_child_at_index(
-                button,
-                this._navigationButtonsOriginalIndices[i]
-            );
+    _unpatchNavigationButtons() {
+        if (this._navigationButtonsChangedId) {
+            this._settings.disconnect(this._navigationButtonsChangedId);
+            this._navigationButtonsChangedId = 0;
         }
 
-        button.remove_transition("opacity");
-        button.visible = true;
-        button.opacity = 255;
-        button.reactive = true;
-    }
+        const appDisplay = this._appDisplay;
+        const parent = this._navigationButtonsParent;
 
-    const layoutManager = parent.layout_manager;
+        if (!appDisplay || !parent) return;
 
-    if (layoutManager?._syncPageIndicatorsVisibility)
-        layoutManager._syncPageIndicatorsVisibility(false);
-}
+        const buttons = [
+            appDisplay._nextPageArrow,
+            appDisplay._prevPageArrow,
+        ].filter(Boolean);
 
-_unpatchNavigationButtons() {
-    if (this._navigationButtonsChangedId) {
-        this._settings.disconnect(this._navigationButtonsChangedId);
-        this._navigationButtonsChangedId = 0;
-    }
+        for (let i = 0; i < buttons.length; i++) {
+            const button = buttons[i];
 
-    const appDisplay = this._appDisplay;
-    const parent = this._navigationButtonsParent;
+            if (button.get_parent() !== parent) {
+                parent.insert_child_at_index(
+                    button,
+                    this._navigationButtonsOriginalIndices[i],
+                );
+            }
 
-    if (!appDisplay || !parent)
-        return;
-
-    const buttons = [
-        appDisplay._nextPageArrow,
-        appDisplay._prevPageArrow,
-    ].filter(Boolean);
-
-    for (let i = 0; i < buttons.length; i++) {
-        const button = buttons[i];
-
-        if (button.get_parent() !== parent) {
-            parent.insert_child_at_index(
-                button,
-                this._navigationButtonsOriginalIndices[i]
-            );
+            button.remove_transition("opacity");
+            button.visible = true;
+            button.opacity = 255;
+            button.reactive = true;
         }
 
-        button.remove_transition("opacity");
-        button.visible = true;
-        button.opacity = 255;
-        button.reactive = true;
+        this._navigationButtonsParent = null;
+        this._navigationButtonsOriginalIndices = [];
     }
-
-    this._navigationButtonsParent = null;
-    this._navigationButtonsOriginalIndices = [];
-}
 
     _hideNavigationButtons() {
         for (const button of [
@@ -174,14 +168,20 @@ _unpatchNavigationButtons() {
 
         const dump = (actor, depth = 0) => {
             const indent = "  ".repeat(depth);
+            const box = actor.get_allocation_box();
+            const allocX = Math.round(box.x1);
+            const allocY = Math.round(box.y1);
+            const allocW = Math.round(box.x2 - box.x1);
+            const allocH = Math.round(box.y2 - box.y1);
 
             log(
                 `${indent}${actor.constructor?.name ?? "unknown"} ` +
                     `name=${actor.name ?? "null"} ` +
-                    `x=${actor.x} y=${actor.y} ` +
-                    `w=${actor.width} h=${actor.height} ` +
+                    `alloc=(${allocX},${allocY} ${allocW}x${allocH}) ` +
                     `x_align=${actor.x_align} y_align=${actor.y_align} ` +
-                    `x_expand=${actor.x_expand} y_expand=${actor.y_expand}`,
+                    `x_expand=${actor.x_expand} y_expand=${actor.y_expand} ` +
+                    `x_fill=${actor.x_fill ?? "n/a"} y_fill=${actor.y_fill ?? "n/a"} ` +
+                    `layout_manager=${actor.layout_manager?.constructor?.name ?? "none"}`,
             );
 
             if (actor.get_children) {
@@ -206,21 +206,45 @@ _unpatchNavigationButtons() {
 
         pageIndicators.vertical = vertical;
 
-        if (vertical) {
-            for (const indicator of pageIndicators.get_children()) {
-                indicator.set_style(
-                    `height: ${AppGridLayoutController.PAGE_INDICATOR_SPACING}px !important;`,
-                );
-            }
-        } else {
-            for (const indicator of pageIndicators.get_children())
-                indicator.set_style(null);
+        for (const indicator of pageIndicators.get_children()) {
+            indicator.set_style(
+                `width: ${AppGridLayoutController.PAGE_INDICATOR_SIZE}px !important; ` +
+                    `height: ${AppGridLayoutController.PAGE_INDICATOR_SIZE}px !important; ` +
+                    `padding: 0 !important; margin: 0 !important; ` +
+                    `border: 0 !important;`,
+            );
         }
 
         pageIndicators.get_children().forEach((indicator) => {
             indicator.add_style_class_name("page-indicator");
             indicator.visible = true;
         });
+
+        const size = AppGridLayoutController.PAGE_INDICATOR_SIZE;
+
+        for (const indicator of pageIndicators.get_children()) {
+            indicator.set_size(size, size);
+
+            // Обгортаємо в try/catch: точна модель вирівнювання
+            // (St.Bin vs St.Widget+BinLayout) відрізняється між версіями
+            // GNOME Shell, і будь-яке невідоме/змінене API тут НЕ повинно
+            // валити весь _patchAppGrid (як це щойно сталося з St.Align).
+            try {
+                const children = indicator.get_children?.() ?? [];
+                const icon = children[0];
+
+                if (icon) {
+                    icon.x_align = Clutter.ActorAlign.CENTER;
+                    icon.y_align = Clutter.ActorAlign.CENTER;
+                    icon.x_expand = false;
+                    icon.y_expand = false;
+                }
+            } catch (e) {
+                logError(e, "CH: page-indicator-icon centering failed");
+            }
+        }
+
+        this._debugPageIndicators(pageIndicators);
 
         const overlay = this._appDisplay?._chOverlayContainer;
 
@@ -231,11 +255,10 @@ _unpatchNavigationButtons() {
         if (pageIndicators.width <= 0 || pageIndicators.height <= 0) return;
 
         if (vertical) {
-            // Видима крапка: 20 px від правого краю.
+            // 15 px від правого краю.
             pageIndicators.x = Math.round(
                 overlay.width -
-                    pageIndicators.width +
-                    12 -
+                    pageIndicators.width -
                     AppGridLayoutController.PAGE_INDICATOR_EDGE_MARGIN,
             );
 
@@ -244,7 +267,7 @@ _unpatchNavigationButtons() {
                 (overlay.height - pageIndicators.height) / 2,
             );
         } else {
-            // Горизонтально: по центру, 20 px від нижнього краю.
+            // 15 px від нижнього краю.
             pageIndicators.x = Math.round(
                 (overlay.width - pageIndicators.width) / 2,
             );
