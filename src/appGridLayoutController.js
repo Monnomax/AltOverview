@@ -18,10 +18,9 @@ export class AppGridLayoutController {
         this._originalPageIndicatorsAlign = null;
         this._originalPageIndicatorsExpand = null;
         this._chScrollViewTopLevel = null;
-        this._originalSyncPageIndicatorsVisibility = null;
-        this._originalNavigationButtonReactive = [];
-        this._navigationButtonVisibleIds = [];
         this._navigationButtonsChangedId = 0;
+        this._navigationButtonsParent = null;
+        this._navigationButtonsOriginalIndices = [];
     }
 
     enable() {
@@ -34,122 +33,140 @@ export class AppGridLayoutController {
         this._unpatchNavigationButtons();
     }
 
-    _updateNavigationButtons() {
-        const showButtons = this._settings.get_boolean(
-            "show-app-grid-navigation-buttons",
-        );
-        if (showButtons) {
-            for (const button of [
-                this._appDisplay?._nextPageArrow,
-                this._appDisplay?._prevPageArrow,
-            ]) {
-                if (!button) continue;
-                button.set_style(null);
-                button.reactive = true;
-            }
-            return;
+    _patchNavigationButtons() {
+    const appDisplay = this._appDisplay;
+
+    if (!appDisplay)
+        return;
+
+    const buttons = [
+        appDisplay._nextPageArrow,
+        appDisplay._prevPageArrow,
+    ].filter(Boolean);
+
+    if (buttons.length === 0)
+        return;
+
+    const parent = buttons[0].get_parent();
+
+    if (!parent)
+        return;
+
+    this._navigationButtonsParent = parent;
+    this._navigationButtonsOriginalIndices = buttons.map(button =>
+        parent.get_children().indexOf(button)
+    );
+
+    this._navigationButtonsChangedId = this._settings.connect(
+        "changed::show-app-grid-navigation-buttons",
+        () => this._updateNavigationButtons()
+    );
+
+    this._updateNavigationButtons();
+}
+
+_updateNavigationButtons() {
+    const appDisplay = this._appDisplay;
+    const parent = this._navigationButtonsParent;
+
+    if (!appDisplay || !parent)
+        return;
+
+    const buttons = [
+        appDisplay._nextPageArrow,
+        appDisplay._prevPageArrow,
+    ].filter(Boolean);
+
+    const showButtons = this._settings.get_boolean(
+        "show-app-grid-navigation-buttons"
+    );
+
+    if (!showButtons) {
+        for (const button of buttons) {
+            if (button.get_parent() === parent)
+                parent.remove_child(button);
+
+            button.remove_transition("opacity");
+            button.visible = false;
+            button.opacity = 0;
+            button.reactive = false;
         }
 
+        return;
+    }
+
+    for (let i = 0; i < buttons.length; i++) {
+        const button = buttons[i];
+
+        if (button.get_parent() !== parent) {
+            parent.insert_child_at_index(
+                button,
+                this._navigationButtonsOriginalIndices[i]
+            );
+        }
+
+        button.remove_transition("opacity");
+        button.visible = true;
+        button.opacity = 255;
+        button.reactive = true;
+    }
+
+    const layoutManager = parent.layout_manager;
+
+    if (layoutManager?._syncPageIndicatorsVisibility)
+        layoutManager._syncPageIndicatorsVisibility(false);
+}
+
+_unpatchNavigationButtons() {
+    if (this._navigationButtonsChangedId) {
+        this._settings.disconnect(this._navigationButtonsChangedId);
+        this._navigationButtonsChangedId = 0;
+    }
+
+    const appDisplay = this._appDisplay;
+    const parent = this._navigationButtonsParent;
+
+    if (!appDisplay || !parent)
+        return;
+
+    const buttons = [
+        appDisplay._nextPageArrow,
+        appDisplay._prevPageArrow,
+    ].filter(Boolean);
+
+    for (let i = 0; i < buttons.length; i++) {
+        const button = buttons[i];
+
+        if (button.get_parent() !== parent) {
+            parent.insert_child_at_index(
+                button,
+                this._navigationButtonsOriginalIndices[i]
+            );
+        }
+
+        button.remove_transition("opacity");
+        button.visible = true;
+        button.opacity = 255;
+        button.reactive = true;
+    }
+
+    this._navigationButtonsParent = null;
+    this._navigationButtonsOriginalIndices = [];
+}
+
+    _hideNavigationButtons() {
         for (const button of [
             this._appDisplay?._nextPageArrow,
             this._appDisplay?._prevPageArrow,
         ]) {
             if (!button) continue;
+
+            button.remove_transition("opacity");
             button.hide();
             button.visible = false;
             button.opacity = 0;
-            button.set_style("display: none;");
             button.reactive = false;
         }
-    }
-
-    _patchNavigationButtons() {
-        const appDisplay = this._appDisplay;
-        if (!appDisplay || this._originalSyncPageIndicatorsVisibility) return;
-
-        const originalSync = appDisplay._syncPageIndicatorsVisibility;
-        if (typeof originalSync !== "function") return;
-
-        this._originalSyncPageIndicatorsVisibility = originalSync;
-        this._originalNavigationButtonReactive = [
-            appDisplay?._nextPageArrow?.reactive,
-            appDisplay?._prevPageArrow?.reactive,
-        ];
-        this._navigationButtonVisibleIds = [
-            appDisplay?._nextPageArrow,
-            appDisplay?._prevPageArrow,
-        ].map(
-            (button) =>
-                button?.connect("notify::visible", () => {
-                    if (
-                        !this._settings.get_boolean(
-                            "show-app-grid-navigation-buttons",
-                        )
-                    )
-                        this._updateNavigationButtons();
-                }) ?? 0,
-        );
-        appDisplay._syncPageIndicatorsVisibility = (...args) => {
-            originalSync.apply(appDisplay, args);
-            this._updateNavigationButtons();
-        };
-        this._navigationButtonsChangedId = this._settings.connect(
-            "changed::show-app-grid-navigation-buttons",
-            () => {
-                if (
-                    this._settings.get_boolean(
-                        "show-app-grid-navigation-buttons",
-                    )
-                )
-                    originalSync.call(appDisplay, false);
-                this._updateNavigationButtons();
-            },
-        );
-        this._updateNavigationButtons();
-    }
-
-    _unpatchNavigationButtons() {
-        if (this._navigationButtonsChangedId) {
-            this._settings.disconnect(this._navigationButtonsChangedId);
-            this._navigationButtonsChangedId = 0;
-        }
-
-        [
-            this._appDisplay?._nextPageArrow,
-            this._appDisplay?._prevPageArrow,
-        ].forEach((button, index) => {
-            const signalId = this._navigationButtonVisibleIds[index];
-            if (button && signalId) button.disconnect(signalId);
-        });
-        this._navigationButtonVisibleIds = [];
-
-        if (this._appDisplay && this._originalSyncPageIndicatorsVisibility) {
-            this._appDisplay._nextPageArrow?.set_style(null);
-            this._appDisplay._prevPageArrow?.set_style(null);
-            this._originalSyncPageIndicatorsVisibility.call(
-                this._appDisplay,
-                false,
-            );
-            this._appDisplay._syncPageIndicatorsVisibility =
-                this._originalSyncPageIndicatorsVisibility;
-            [
-                this._appDisplay._nextPageArrow,
-                this._appDisplay._prevPageArrow,
-            ].forEach((button, index) => {
-                if (
-                    button &&
-                    this._originalNavigationButtonReactive[index] !== undefined
-                ) {
-                    button.reactive =
-                        this._originalNavigationButtonReactive[index];
-                    button.opacity = 255;
-                    button.visible = true;
-                }
-            });
-        }
-
-        this._originalSyncPageIndicatorsVisibility = null;
-        this._originalNavigationButtonReactive = [];
     }
 
     _debugPageIndicators(pageIndicators) {
