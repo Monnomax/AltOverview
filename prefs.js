@@ -281,6 +281,27 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
             settings,
             "workspaces-scroll-direction",
         );
+
+        const closeButtonGroup = new Adw.PreferencesGroup({
+            title: _("Кнопка закриття"),
+        });
+        page.add(closeButtonGroup);
+
+        const closeButtonRow = new Adw.ActionRow({
+            title: _("Показувати кнопку закриття вікна"),
+        });
+        const closeButtonSwitch = new Gtk.Switch({
+            valign: Gtk.Align.CENTER,
+        });
+        settings.bind(
+            "show-window-close-button",
+            closeButtonSwitch,
+            "active",
+            Gio.SettingsBindFlags.DEFAULT,
+        );
+        closeButtonRow.add_suffix(closeButtonSwitch);
+        closeButtonRow.activatable_widget = closeButtonSwitch;
+        closeButtonGroup.add(closeButtonRow);
     }
 
     // --- Вкладка "Сітка програм" ---
@@ -425,9 +446,7 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
         const namesChangedId = settings.connect(
             "changed::app-grid-names-visibility",
             () => {
-                const value = settings.get_string(
-                    "app-grid-names-visibility",
-                );
+                const value = settings.get_string("app-grid-names-visibility");
                 const index = APP_GRID_NAMES_VISIBILITY.indexOf(value);
                 if (index >= 0 && index !== namesRow.selected)
                     namesRow.set_selected(index);
@@ -443,6 +462,27 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
             settings,
             "app-grid-scroll-direction",
         );
+
+        const navigationGroup = new Adw.PreferencesGroup({
+            title: _("Показувати кнопки навігації"),
+        });
+        page.add(navigationGroup);
+
+        const navigationRow = new Adw.ActionRow({
+            title: _("Показувати кнопки навігації"),
+        });
+        const navigationSwitch = new Gtk.Switch({
+            valign: Gtk.Align.CENTER,
+        });
+        settings.bind(
+            "show-app-grid-navigation-buttons",
+            navigationSwitch,
+            "active",
+            Gio.SettingsBindFlags.DEFAULT,
+        );
+        navigationRow.add_suffix(navigationSwitch);
+        navigationRow.activatable_widget = navigationSwitch;
+        navigationGroup.add(navigationRow);
     }
 
     // Спільний будівник групи "Орієнтація" з рядком вибору напрямку
@@ -599,18 +639,13 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
         });
 
         // Синхронізуємо меню, якщо значення зміниться ззовні.
-        const curveChangedId = settings.connect(
-            `changed::${curveKey}`,
-            () => {
-                const value = settings.get_string(curveKey);
-                const index = ICON_ANIMATION_CURVES.indexOf(value);
-                if (index >= 0 && index !== curveDropdown.selected)
-                    curveDropdown.set_selected(index);
-            },
-        );
-        expander.connect("destroy", () =>
-            settings.disconnect(curveChangedId),
-        );
+        const curveChangedId = settings.connect(`changed::${curveKey}`, () => {
+            const value = settings.get_string(curveKey);
+            const index = ICON_ANIMATION_CURVES.indexOf(value);
+            if (index >= 0 && index !== curveDropdown.selected)
+                curveDropdown.set_selected(index);
+        });
+        expander.connect("destroy", () => settings.disconnect(curveChangedId));
 
         expander.add_suffix(curveDropdown);
         expander.add_row(inRow.row);
@@ -662,21 +697,18 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
             );
         });
 
-        const changedId = settings.connect(
-            `changed::${durationsKey}`,
-            () => {
-                const value = this._getCurveDuration(
-                    settings,
-                    durationsKey,
-                    getCurveName(),
-                );
-                if (value !== adjustment.value) {
-                    suppress = true;
-                    adjustment.set_value(value);
-                    suppress = false;
-                }
-            },
-        );
+        const changedId = settings.connect(`changed::${durationsKey}`, () => {
+            const value = this._getCurveDuration(
+                settings,
+                durationsKey,
+                getCurveName(),
+            );
+            if (value !== adjustment.value) {
+                suppress = true;
+                adjustment.set_value(value);
+                suppress = false;
+            }
+        });
         row.connect("destroy", () => settings.disconnect(changedId));
 
         return {

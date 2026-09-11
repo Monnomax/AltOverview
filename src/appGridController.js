@@ -11,6 +11,7 @@ export class AppGridController {
         this._origAdjustment = null;
         this._origHScrollbarPolicy = null;
         this._origVScrollbarPolicy = null;
+        this._verticalAdjustmentChangedId = 0;
     }
 
     enable() {
@@ -21,6 +22,13 @@ export class AppGridController {
         const appDisplay = this._appDisplay;
         const grid = appDisplay?._grid;
         const scrollView = appDisplay?._scrollView;
+
+        if (this._verticalAdjustmentChangedId) {
+    scrollView.vadjustment.disconnect(
+        this._verticalAdjustmentChangedId
+    );
+    this._verticalAdjustmentChangedId = 0;
+}
         if (!grid?._verticalPatched || !scrollView) return;
 
         delete grid._verticalPatched;
@@ -32,6 +40,21 @@ export class AppGridController {
         scrollView.hscrollbar_policy = this._origHScrollbarPolicy;
         scrollView.vscrollbar_policy = this._origVScrollbarPolicy;
         grid.queue_relayout();
+    }
+
+    _syncPageIndicators() {
+        const appDisplay = this._appDisplay;
+        const adjustment = appDisplay?._adjustment;
+        const pageIndicators = appDisplay?._pageIndicators;
+
+        if (!adjustment || !pageIndicators) return;
+
+        if (adjustment.page_size <= 0) return;
+
+        const value = adjustment.value / adjustment.page_size;
+
+        if (typeof pageIndicators.setCurrentPosition === "function")
+            pageIndicators.setCurrentPosition(value);
     }
 
     updateOrientation() {
@@ -54,11 +77,24 @@ export class AppGridController {
                 ? Clutter.Orientation.VERTICAL
                 : this._origSwipeOrientation;
         appDisplay._adjustment = vertical
-            ? scrollView.vadjustment
-            : this._origAdjustment;
-        scrollView.hscrollbar_policy = vertical
-            ? St.PolicyType.NEVER
-            : this._origHScrollbarPolicy;
+    ? scrollView.vadjustment
+    : this._origAdjustment;
+    if (this._verticalAdjustmentChangedId) {
+    scrollView.vadjustment.disconnect(
+        this._verticalAdjustmentChangedId
+    );
+    this._verticalAdjustmentChangedId = 0;
+}
+
+if (vertical) {
+    this._verticalAdjustmentChangedId =
+        scrollView.vadjustment.connect(
+            "notify::value",
+            () => this._syncPageIndicators(),
+        );
+
+    this._syncPageIndicators();
+}
         scrollView.vscrollbar_policy = vertical
             ? St.PolicyType.EXTERNAL
             : this._origVScrollbarPolicy;

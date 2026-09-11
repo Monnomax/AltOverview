@@ -8,6 +8,7 @@ import { IconInteractionController } from "./src/iconInteractionController.js";
 import { LayoutController } from "./src/layoutController.js";
 import { ScrollController } from "./src/scrollController.js";
 import { WorkspacesController } from "./src/workspacesController.js";
+import { WindowPreviewController } from "./src/windowPreviewController.js";
 
 export default class OverviewBackgroundExtension extends Extension {
     enable() {
@@ -50,6 +51,9 @@ export default class OverviewBackgroundExtension extends Extension {
             this._workspacesDisplay,
             (step) => this._appGridController.goToPage(step),
         );
+        this._windowPreviewController = new WindowPreviewController(
+            this._settings,
+        );
 
         this._backgroundController.enable();
         this._layoutController.enable();
@@ -58,6 +62,7 @@ export default class OverviewBackgroundExtension extends Extension {
         this._iconController.updateNamesVisibility();
         this._appGridLayoutController.enable();
         this._scrollController.enable();
+        this._windowPreviewController.enable();
 
         const applySettings = () => {
             this._backgroundController.setVisible(
@@ -92,6 +97,7 @@ export default class OverviewBackgroundExtension extends Extension {
         }
 
         this._scrollController?.disable();
+        this._windowPreviewController?.disable();
         this._appGridLayoutController?.disable();
         this._iconController?.disable();
         this._appGridController?.disable();
@@ -100,6 +106,7 @@ export default class OverviewBackgroundExtension extends Extension {
         this._backgroundController?.disable();
 
         this._scrollController = null;
+        this._windowPreviewController = null;
         this._appGridLayoutController = null;
         this._iconController = null;
         this._appGridController = null;
