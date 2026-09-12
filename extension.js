@@ -3,6 +3,7 @@ import * as Main from "resource:///org/gnome/shell/ui/main.js";
 
 import { AppGridController } from "./src/appGridController.js";
 import { AppGridLayoutController } from "./src/appGridLayoutController.js";
+import { AppGridOrderController } from "./src/appGridOrderController.js";
 import { BackgroundController } from "./src/backgroundController.js";
 import { IconInteractionController } from "./src/iconInteractionController.js";
 import { LayoutController } from "./src/layoutController.js";
@@ -13,6 +14,7 @@ import { WindowPreviewController } from "./src/windowPreviewController.js";
 export default class OverviewBackgroundExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
+        this._migrateWorkspaceSize();
         this._searchEntry = Main.overview.searchEntry;
         this._controls = Main.overview._overview._controls;
         this._layoutManager = this._controls?.layout_manager ?? null;
@@ -33,6 +35,10 @@ export default class OverviewBackgroundExtension extends Extension {
             this._workspacesDisplay,
         );
         this._appGridController = new AppGridController(
+            this._settings,
+            this._appDisplay,
+        );
+        this._appGridOrderController = new AppGridOrderController(
             this._settings,
             this._appDisplay,
         );
@@ -58,6 +64,7 @@ export default class OverviewBackgroundExtension extends Extension {
         this._backgroundController.enable();
         this._layoutController.enable();
         this._workspacesController.enable();
+        this._appGridOrderController.enable();
         this._appGridController.enable();
         this._iconController.updateNamesVisibility();
         this._appGridLayoutController.enable();
@@ -101,6 +108,7 @@ export default class OverviewBackgroundExtension extends Extension {
         this._appGridLayoutController?.disable();
         this._iconController?.disable();
         this._appGridController?.disable();
+        this._appGridOrderController?.disable();
         this._workspacesController?.disable();
         this._layoutController?.disable();
         this._backgroundController?.disable();
@@ -110,6 +118,7 @@ export default class OverviewBackgroundExtension extends Extension {
         this._appGridLayoutController = null;
         this._iconController = null;
         this._appGridController = null;
+        this._appGridOrderController = null;
         this._workspacesController = null;
         this._layoutController = null;
         this._backgroundController = null;
@@ -120,5 +129,18 @@ export default class OverviewBackgroundExtension extends Extension {
         this._workspacesDisplay = null;
         this._workspacesView = null;
         this._settings = null;
+    }
+
+    _migrateWorkspaceSize() {
+        if (this._settings.get_boolean("workspace-size-migrated")) return;
+
+        const oldSize = this._settings.get_int("workspace-size");
+
+        if (oldSize !== 0) {
+            const newSize = Math.max(-100, Math.min(100, (oldSize - 100) * 5));
+            this._settings.set_int("workspace-size", newSize);
+        }
+
+        this._settings.set_boolean("workspace-size-migrated", true);
     }
 }

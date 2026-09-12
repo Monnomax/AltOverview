@@ -1,11 +1,13 @@
 import Clutter from "gi://Clutter";
 import St from "gi://St";
 import GLib from "gi://GLib";
+import * as Main from "resource:///org/gnome/shell/ui/main.js";
 
 export class AppGridLayoutController {
     static PAGE_INDICATOR_BOTTOM_MARGIN = 15;
     static PAGE_INDICATOR_EDGE_MARGIN = 15;
     static PAGE_INDICATOR_SIZE = 40;
+    static PAGE_INDICATOR_SPACING = 25;
 
     constructor(settings, appDisplay, iconController) {
         this._settings = settings;
@@ -21,14 +23,60 @@ export class AppGridLayoutController {
         this._navigationButtonsChangedId = 0;
         this._navigationButtonsParent = null;
         this._navigationButtonsOriginalIndices = [];
+        this._navigationButtonsLayoutManager = null;
+        this._originalSyncPageIndicatorsVisibility = null;
+        this._patchAppGridIdleId = 0;
+        this._startupCompleteId = 0;
     }
 
     enable() {
         this._patchNavigationButtons();
-        this._patchAppGrid();
+
+        // Перебудова дерева акторів (remove_child/insert_child_at_index,
+        // новий overlay) в _patchAppGrid() чіпляється до Main.layoutManager
+        // "startup-complete" (якщо Shell саме зараз стартує), а вже потім
+        // — на idle-цикл. Виконання цього синхронно/зарано (при вході в
+        // сесію) застає Shell посеред власного relayout/deferred-work
+        // циклу ще до першого Dash._redisplay(), і будь-який негайний
+        // запит allocation/theme-node на щойно переставлених акторах
+        // провокує "needs an allocation" та TypeError у Dash (гонитва
+        // черги queueDeferredWork).
+        const scheduleIdle = () => {
+            this._patchAppGridIdleId = GLib.idle_add(
+                GLib.PRIORITY_DEFAULT_IDLE,
+                () => {
+                    this._patchAppGridIdleId = 0;
+                    this._patchAppGrid();
+                    return GLib.SOURCE_REMOVE;
+                },
+            );
+        };
+
+        if (Main.layoutManager._startingUp) {
+            this._startupCompleteId = Main.layoutManager.connect(
+                "startup-complete",
+                () => {
+                    Main.layoutManager.disconnect(this._startupCompleteId);
+                    this._startupCompleteId = 0;
+                    scheduleIdle();
+                },
+            );
+        } else {
+            scheduleIdle();
+        }
     }
 
     disable() {
+        if (this._startupCompleteId) {
+            Main.layoutManager.disconnect(this._startupCompleteId);
+            this._startupCompleteId = 0;
+        }
+
+        if (this._patchAppGridIdleId) {
+            GLib.source_remove(this._patchAppGridIdleId);
+            this._patchAppGridIdleId = 0;
+        }
+
         this._unpatchAppGrid();
         this._unpatchNavigationButtons();
     }
@@ -54,6 +102,21 @@ export class AppGridLayoutController {
             parent.get_children().indexOf(button),
         );
 
+        const syncOwner =
+            typeof appDisplay._syncPageIndicatorsVisibility === "function"
+                ? appDisplay
+                : parent.layout_manager;
+        const originalSync = syncOwner?._syncPageIndicatorsVisibility;
+        if (typeof originalSync === "function") {
+            const controller = this;
+            this._navigationButtonsLayoutManager = syncOwner;
+            this._originalSyncPageIndicatorsVisibility = originalSync;
+            syncOwner._syncPageIndicatorsVisibility = function (...args) {
+                originalSync.apply(this, args);
+                controller._enforceNavigationButtonsVisibility();
+            };
+        }
+
         this._navigationButtonsChangedId = this._settings.connect(
             "changed::show-app-grid-navigation-buttons",
             () => this._updateNavigationButtons(),
@@ -77,39 +140,40 @@ export class AppGridLayoutController {
             "show-app-grid-navigation-buttons",
         );
 
-        if (!showButtons) {
-            for (const button of buttons) {
-                if (button.get_parent() === parent) parent.remove_child(button);
+        // Порядок критичний: layoutManager._syncPageIndicatorsVisibility()
+        // — це нативний метод GNOME Shell, який сам вирішує, чи показувати
+        // стрілки, виходячи з поточної сторінки (є наступна/попередня чи
+        // ні) — і не знає про наш перемикач "show-app-grid-navigation-
+        // buttons". Якщо викликати його ПІСЛЯ нашого forced-hide, він
+        // скидає visible назад у true (лишаючи button.reactive=false,
+        // звідси видимі, але нереактивні кнопки). Тому спершу даємо
+        // GNOME перерахувати свій стан, а тоді накладаємо наше рішення
+        // поверх як останнє й вирішальне.
+        const syncOwner = this._navigationButtonsLayoutManager;
+        const originalSync = this._originalSyncPageIndicatorsVisibility;
+        if (syncOwner && originalSync) originalSync.call(syncOwner, false);
+        else if (parent.layout_manager?._syncPageIndicatorsVisibility)
+            parent.layout_manager._syncPageIndicatorsVisibility(false);
 
-                button.remove_transition("opacity");
-                button.visible = false;
-                button.opacity = 0;
-                button.reactive = false;
-            }
+        this._enforceNavigationButtonsVisibility();
+    }
 
+    _enforceNavigationButtonsVisibility() {
+        if (this._settings.get_boolean("show-app-grid-navigation-buttons"))
             return;
-        }
 
-        for (let i = 0; i < buttons.length; i++) {
-            const button = buttons[i];
+        const appDisplay = this._appDisplay;
+        const buttons = [
+            appDisplay?._nextPageArrow,
+            appDisplay?._prevPageArrow,
+        ].filter(Boolean);
 
-            if (button.get_parent() !== parent) {
-                parent.insert_child_at_index(
-                    button,
-                    this._navigationButtonsOriginalIndices[i],
-                );
-            }
-
+        for (const button of buttons) {
             button.remove_transition("opacity");
-            button.visible = true;
-            button.opacity = 255;
-            button.reactive = true;
+            button.visible = false;
+            button.opacity = 0;
+            button.reactive = false;
         }
-
-        const layoutManager = parent.layout_manager;
-
-        if (layoutManager?._syncPageIndicatorsVisibility)
-            layoutManager._syncPageIndicatorsVisibility(false);
     }
 
     _unpatchNavigationButtons() {
@@ -119,25 +183,29 @@ export class AppGridLayoutController {
         }
 
         const appDisplay = this._appDisplay;
-        const parent = this._navigationButtonsParent;
 
-        if (!appDisplay || !parent) return;
+        if (
+            this._navigationButtonsLayoutManager &&
+            this._originalSyncPageIndicatorsVisibility &&
+            this._navigationButtonsLayoutManager
+                ._syncPageIndicatorsVisibility !==
+                this._originalSyncPageIndicatorsVisibility
+        ) {
+            this._navigationButtonsLayoutManager._syncPageIndicatorsVisibility =
+                this._originalSyncPageIndicatorsVisibility;
+        }
+
+        this._navigationButtonsLayoutManager = null;
+        this._originalSyncPageIndicatorsVisibility = null;
+
+        if (!appDisplay) return;
 
         const buttons = [
             appDisplay._nextPageArrow,
             appDisplay._prevPageArrow,
         ].filter(Boolean);
 
-        for (let i = 0; i < buttons.length; i++) {
-            const button = buttons[i];
-
-            if (button.get_parent() !== parent) {
-                parent.insert_child_at_index(
-                    button,
-                    this._navigationButtonsOriginalIndices[i],
-                );
-            }
-
+        for (const button of buttons) {
             button.remove_transition("opacity");
             button.visible = true;
             button.opacity = 255;
@@ -204,7 +272,9 @@ export class AppGridLayoutController {
             this._settings.get_string("app-grid-scroll-direction") ===
             "vertical";
 
-        pageIndicators.vertical = vertical;
+        pageIndicators.orientation = vertical
+            ? Clutter.Orientation.VERTICAL
+            : Clutter.Orientation.HORIZONTAL;
 
         for (const indicator of pageIndicators.get_children()) {
             indicator.set_style(
@@ -244,8 +314,6 @@ export class AppGridLayoutController {
             }
         }
 
-        this._debugPageIndicators(pageIndicators);
-
         const overlay = this._appDisplay?._chOverlayContainer;
 
         if (!overlay) return;
@@ -255,7 +323,7 @@ export class AppGridLayoutController {
         if (pageIndicators.width <= 0 || pageIndicators.height <= 0) return;
 
         if (vertical) {
-            // 15 px від правого краю.
+            // 20 px від правого краю.
             pageIndicators.x = Math.round(
                 overlay.width -
                     pageIndicators.width -
@@ -267,7 +335,7 @@ export class AppGridLayoutController {
                 (overlay.height - pageIndicators.height) / 2,
             );
         } else {
-            // 15 px від нижнього краю.
+            // 20 px від нижнього краю.
             pageIndicators.x = Math.round(
                 (overlay.width - pageIndicators.width) / 2,
             );

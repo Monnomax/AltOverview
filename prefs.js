@@ -19,6 +19,14 @@ const APP_GRID_NAMES_VISIBILITY = ["always", "never", "hover"];
 // в extension.js (див. ICON_SIZE_PX там же).
 const APP_GRID_ICON_SIZE = ["small", "medium", "large", "extra-large"];
 
+const APP_GRID_ORDER = [
+    "manual",
+    "name-ascending",
+    "name-descending",
+    "usage",
+    "last-used",
+];
+
 // Індекси відповідають порядку рядків у Gtk.StringList для випадаючих
 // меню кривих анімації іконок (група "Анімація іконок").
 const ICON_ANIMATION_CURVES = [
@@ -252,7 +260,7 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
             title: _("Розмір стільниці"),
         });
         const sizeAdjustment = new Gtk.Adjustment({
-            lower: 25,
+            lower: -100,
             upper: 100,
             step_increment: 1,
             page_increment: 5,
@@ -514,6 +522,65 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
         navigationRow.add_suffix(navigationSwitch);
         navigationRow.activatable_widget = navigationSwitch;
         navigationGroup.add(navigationRow);
+
+        const orderGroup = new Adw.PreferencesGroup({
+            title: _("Упорядкування"),
+        });
+        page.add(orderGroup);
+
+        const orderRow = new Adw.ComboRow({
+            title: _("Упорядкувати:"),
+            model: new Gtk.StringList({
+                strings: [
+                    _("Ручний"),
+                    _("A → Z / А → Я"),
+                    _("Z → A / Я → А"),
+                    _("За частотою використання"),
+                    _("За останнім запуском"),
+                ],
+            }),
+        });
+        const currentOrder = APP_GRID_ORDER.indexOf(
+            settings.get_string("app-grid-order"),
+        );
+        orderRow.set_selected(currentOrder >= 0 ? currentOrder : 0);
+        orderRow.connect("notify::selected", () => {
+            const value = APP_GRID_ORDER[orderRow.selected] ?? "manual";
+            if (settings.get_string("app-grid-order") !== value)
+                settings.set_string("app-grid-order", value);
+        });
+        const orderChangedId = settings.connect(
+            "changed::app-grid-order",
+            () => {
+                const value = settings.get_string("app-grid-order");
+                const index = APP_GRID_ORDER.indexOf(value);
+                if (index >= 0 && index !== orderRow.selected)
+                    orderRow.set_selected(index);
+            },
+        );
+        orderRow.connect("destroy", () => settings.disconnect(orderChangedId));
+        orderGroup.add(orderRow);
+
+        const pinnedAppsGroup = new Adw.PreferencesGroup({
+            title: _("Показувати пришпилені програми"),
+        });
+        page.add(pinnedAppsGroup);
+
+        const pinnedAppsRow = new Adw.ActionRow({
+            title: _("Показувати пришпилені програми"),
+        });
+        const pinnedAppsSwitch = new Gtk.Switch({
+            valign: Gtk.Align.CENTER,
+        });
+        settings.bind(
+            "show-pinned-apps",
+            pinnedAppsSwitch,
+            "active",
+            Gio.SettingsBindFlags.DEFAULT,
+        );
+        pinnedAppsRow.add_suffix(pinnedAppsSwitch);
+        pinnedAppsRow.activatable_widget = pinnedAppsSwitch;
+        pinnedAppsGroup.add(pinnedAppsRow);
     }
 
     // Спільний будівник групи "Орієнтація" з рядком вибору напрямку

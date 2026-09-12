@@ -12,9 +12,12 @@ export class AppGridController {
         this._origHScrollbarPolicy = null;
         this._origVScrollbarPolicy = null;
         this._verticalAdjustmentChangedId = 0;
+        this._originalLoadApps = null;
+        this._showPinnedAppsChangedId = 0;
     }
 
     enable() {
+        this._patchPinnedApps();
         this._patchOrientation();
     }
 
@@ -23,12 +26,23 @@ export class AppGridController {
         const grid = appDisplay?._grid;
         const scrollView = appDisplay?._scrollView;
 
+        if (this._showPinnedAppsChangedId) {
+            this._settings.disconnect(this._showPinnedAppsChangedId);
+            this._showPinnedAppsChangedId = 0;
+        }
+        if (appDisplay && this._originalLoadApps) {
+            appDisplay._loadApps = this._originalLoadApps;
+            delete appDisplay._showPinnedAppsPatched;
+            appDisplay._redisplay?.();
+        }
+        this._originalLoadApps = null;
+
         if (this._verticalAdjustmentChangedId) {
-    scrollView.vadjustment.disconnect(
-        this._verticalAdjustmentChangedId
-    );
-    this._verticalAdjustmentChangedId = 0;
-}
+            scrollView.vadjustment.disconnect(
+                this._verticalAdjustmentChangedId,
+            );
+            this._verticalAdjustmentChangedId = 0;
+        }
         if (!grid?._verticalPatched || !scrollView) return;
 
         delete grid._verticalPatched;
@@ -40,6 +54,33 @@ export class AppGridController {
         scrollView.hscrollbar_policy = this._origHScrollbarPolicy;
         scrollView.vscrollbar_policy = this._origVScrollbarPolicy;
         grid.queue_relayout();
+    }
+
+    _patchPinnedApps() {
+        const appDisplay = this._appDisplay;
+        if (!appDisplay || typeof appDisplay._loadApps !== "function") return;
+        if (appDisplay._showPinnedAppsPatched) return;
+
+        this._originalLoadApps = appDisplay._loadApps;
+        const controller = this;
+        appDisplay._loadApps = function (...args) {
+            if (!controller._settings.get_boolean("show-pinned-apps"))
+                return controller._originalLoadApps.apply(this, args);
+
+            const originalFavorites = this._appFavorites;
+            this._appFavorites = { isFavorite: () => false };
+            try {
+                return controller._originalLoadApps.apply(this, args);
+            } finally {
+                this._appFavorites = originalFavorites;
+            }
+        };
+        appDisplay._showPinnedAppsPatched = true;
+
+        this._showPinnedAppsChangedId = this._settings.connect(
+            "changed::show-pinned-apps",
+            () => appDisplay._redisplay?.(),
+        );
     }
 
     _syncPageIndicators() {
@@ -77,24 +118,23 @@ export class AppGridController {
                 ? Clutter.Orientation.VERTICAL
                 : this._origSwipeOrientation;
         appDisplay._adjustment = vertical
-    ? scrollView.vadjustment
-    : this._origAdjustment;
-    if (this._verticalAdjustmentChangedId) {
-    scrollView.vadjustment.disconnect(
-        this._verticalAdjustmentChangedId
-    );
-    this._verticalAdjustmentChangedId = 0;
-}
+            ? scrollView.vadjustment
+            : this._origAdjustment;
+        if (this._verticalAdjustmentChangedId) {
+            scrollView.vadjustment.disconnect(
+                this._verticalAdjustmentChangedId,
+            );
+            this._verticalAdjustmentChangedId = 0;
+        }
 
-if (vertical) {
-    this._verticalAdjustmentChangedId =
-        scrollView.vadjustment.connect(
-            "notify::value",
-            () => this._syncPageIndicators(),
-        );
+        if (vertical) {
+            this._verticalAdjustmentChangedId = scrollView.vadjustment.connect(
+                "notify::value",
+                () => this._syncPageIndicators(),
+            );
 
-    this._syncPageIndicators();
-}
+            this._syncPageIndicators();
+        }
         scrollView.vscrollbar_policy = vertical
             ? St.PolicyType.EXTERNAL
             : this._origVScrollbarPolicy;

@@ -63,10 +63,18 @@
     </key>
 
     <key name="workspace-size" type="i">
-      <range min="25" max="100" />
-      <default>100</default>
+      <range min="-100" max="100" />
+      <default>0</default>
       <summary>Розмір стільниці</summary>
-      <description>Розмір області стільниці в Огляді у відсотках від стандартного розміру.</description>
+      <description>Зміна розміру області стільниці в Огляді: 0 — стандартний розмір, від’ємні
+        значення зменшують, додатні збільшують.</description>
+    </key>
+
+    <key name="workspace-size-migrated" type="b">
+      <default>false</default>
+      <summary>Міграцію розміру стільниці виконано</summary>
+      <description>Службовий параметр для одноразового перенесення старого значення розміру
+        стільниці.</description>
     </key>
 
     <key name="show-window-close-button" type="b">
@@ -99,6 +107,37 @@
       <default>true</default>
       <summary>Показувати кнопки навігації сітки програм</summary>
       <description>Показувати кнопки переходу до попередньої та наступної сторінки сітки програм.</description>
+    </key>
+
+    <key name="show-pinned-apps" type="b">
+      <default>false</default>
+      <summary>Показувати пришпилені програми</summary>
+      <description>Показувати в сітці програм застосунки, пришпилені до доку.</description>
+    </key>
+
+    <key name="app-grid-order" type="s">
+      <choices>
+        <choice value="manual" />
+        <choice value="name-ascending" />
+        <choice value="name-descending" />
+        <choice value="usage" />
+        <choice value="last-used" />
+      </choices>
+      <default>"manual"</default>
+      <summary>Порядок застосунків у сітці</summary>
+      <description>Спосіб упорядкування іконок у сітці програм.</description>
+    </key>
+
+    <key name="app-grid-launch-counts" type="a{si}">
+      <default>{}</default>
+      <summary>Лічильники запусків застосунків</summary>
+      <description>Службові дані для сортування застосунків за частотою використання.</description>
+    </key>
+
+    <key name="app-grid-last-used" type="a{sx}">
+      <default>{}</default>
+      <summary>Час останнього запуску застосунків</summary>
+      <description>Службові дані для сортування застосунків за останнім запуском.</description>
     </key>
 
     <key name="app-grid-columns" type="i">
