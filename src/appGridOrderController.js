@@ -16,8 +16,13 @@ export class AppGridOrderController {
         this._appSystem = Shell.AppSystem.get_default();
         this._originalCompareItems = null;
         this._originalLoadApps = null;
+        this._originalRedisplay = null;
+        this._isRedisplaying = false;
         this._settingsChangedId = 0;
         this._appStateChangedId = 0;
+        this._originalGetItemPosition = null;
+
+        this._targetPositions = null;
     }
 
     enable() {
@@ -26,18 +31,51 @@ export class AppGridOrderController {
         if (
             !appDisplay ||
             !appSystem ||
-            typeof appDisplay._compareItems !== "function"
+            typeof appDisplay._compareItems !== "function" ||
+            typeof appDisplay._loadApps !== "function" ||
+            typeof appDisplay._getItemPosition !== "function" ||
+            typeof appDisplay._redisplay !== "function"
         )
             return;
 
         this._originalCompareItems = appDisplay._compareItems;
         this._originalLoadApps = appDisplay._loadApps;
+        this._originalGetItemPosition = appDisplay._getItemPosition;
+        this._originalRedisplay = appDisplay._redisplay;
         const controller = this;
 
-        appDisplay._loadApps = function (...args) {
-            const items = controller._originalLoadApps.apply(this, args);
-            controller._normalizeManualOrder(items);
-            return items;
+        appDisplay._getItemPosition = function (item) {
+            const target = controller._targetPositions?.get(item);
+
+            if (target) return target;
+
+            return controller._originalGetItemPosition.call(this, item);
+        };
+
+        appDisplay._redisplay = function (...args) {
+            if (controller._getOrderMode() === "manual")
+                return controller._originalRedisplay.apply(this, args);
+
+            const items = controller._originalLoadApps
+                .call(this)
+                .sort(controller._compareOrderedItems.bind(controller));
+
+            const itemsPerPage = this._grid.itemsPerPage;
+
+            controller._targetPositions = new Map();
+
+            items.forEach((item, index) => {
+                const page = Math.floor(index / itemsPerPage);
+                const position = index % itemsPerPage;
+
+                controller._targetPositions.set(item, [page, position]);
+            });
+
+            try {
+                return controller._originalRedisplay.apply(this, args);
+            } finally {
+                controller._targetPositions = null;
+            }
         };
 
         appDisplay._compareItems = function (left, right) {
@@ -95,22 +133,32 @@ export class AppGridOrderController {
 
         if (
             this._appDisplay &&
+            this._originalGetItemPosition &&
+            this._appDisplay._getItemPosition !== this._originalGetItemPosition
+        )
+            this._appDisplay._getItemPosition = this._originalGetItemPosition;
+
+        if (
+            this._appDisplay &&
+            this._originalRedisplay &&
+            this._appDisplay._redisplay !== this._originalRedisplay
+        )
+            this._appDisplay._redisplay = this._originalRedisplay;
+
+        if (
+            this._appDisplay &&
             this._originalCompareItems &&
             this._appDisplay._compareItems !== this._originalCompareItems
         )
             this._appDisplay._compareItems = this._originalCompareItems;
 
-        if (
-            this._appDisplay &&
-            this._originalLoadApps &&
-            this._appDisplay._loadApps !== this._originalLoadApps
-        )
-            this._appDisplay._loadApps = this._originalLoadApps;
-
         this._appDisplay?._redisplay?.();
 
         this._originalCompareItems = null;
         this._originalLoadApps = null;
+        this._originalGetItemPosition = null;
+        this._originalRedisplay = null;
+        this._targetPositions = null;
     }
 
     _getOrderMode() {
@@ -145,8 +193,8 @@ export class AppGridOrderController {
 
     _compareManualItems(left, right) {
         const order = this._getManualOrder();
-        const leftId = this._getManualItemId(left);
-        const rightId = this._getManualItemId(right);
+        const leftId = this._getItemId(left);
+        const rightId = this._getItemId(right);
         const leftPosition = leftId ? order.indexOf(leftId) : -1;
         const rightPosition = rightId ? order.indexOf(rightId) : -1;
 
@@ -169,7 +217,7 @@ export class AppGridOrderController {
 
     _normalizeManualOrder(items) {
         const availableIds = items
-            .map((item) => this._getManualItemId(item))
+            .map((item) => this._getItemId(item))
             .filter(Boolean);
         const availableSet = new Set(availableIds);
         const currentOrder = this._getManualOrder();
@@ -209,15 +257,30 @@ export class AppGridOrderController {
     }
 
     _refreshAppGrid() {
-        this._appDisplay?._redisplay?.();
-        this._appDisplay?._grid?.queue_relayout?.();
+        const appDisplay = this._appDisplay;
+
+        if (!appDisplay) return;
+
+        appDisplay._redisplay?.();
+
+        const items = appDisplay._orderedItems ?? [];
+
+        console.log(
+            "ALT ORDER:",
+            items.map((item) => item.name ?? item.id).join(" | "),
+        );
+
+        const gridItems = appDisplay._grid?.getItemsAtPage?.(0) ?? [];
+
+        console.log(
+            "ALT GRID:",
+            gridItems.map((item) => item.name ?? item.id).join(" | "),
+        );
+
+        appDisplay._grid?.queue_relayout?.();
     }
 
     _getItemId(item) {
-        return item.app ? this._getAppId(item.app) : "";
-    }
-
-    _getManualItemId(item) {
         return item.app ? this._getAppId(item.app) : "";
     }
 
