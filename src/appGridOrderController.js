@@ -15,6 +15,7 @@ export class AppGridOrderController {
         this._appDisplay = appDisplay;
         this._appSystem = Shell.AppSystem.get_default();
         this._originalCompareItems = null;
+        this._originalLoadApps = null;
         this._settingsChangedId = 0;
         this._appStateChangedId = 0;
     }
@@ -30,18 +31,22 @@ export class AppGridOrderController {
             return;
 
         this._originalCompareItems = appDisplay._compareItems;
+        this._originalLoadApps = appDisplay._loadApps;
         const controller = this;
 
-        appDisplay._compareItems = function (left, right) {
-            if (controller._getOrderMode() === "manual")
-                return controller._originalCompareItems.call(this, left, right);
+        appDisplay._loadApps = function (...args) {
+            const items = controller._originalLoadApps.apply(this, args);
+            controller._normalizeManualOrder(items);
+            return items;
+        };
 
+        appDisplay._compareItems = function (left, right) {
             return controller._compareOrderedItems(left, right);
         };
 
         this._settingsChangedId = this._settings.connect(
             "changed::app-grid-order",
-            () => appDisplay._redisplay?.(),
+            () => controller._refreshAppGrid(),
         );
 
         const appSystemChanged = (system, app) => {
@@ -95,9 +100,17 @@ export class AppGridOrderController {
         )
             this._appDisplay._compareItems = this._originalCompareItems;
 
+        if (
+            this._appDisplay &&
+            this._originalLoadApps &&
+            this._appDisplay._loadApps !== this._originalLoadApps
+        )
+            this._appDisplay._loadApps = this._originalLoadApps;
+
         this._appDisplay?._redisplay?.();
 
         this._originalCompareItems = null;
+        this._originalLoadApps = null;
     }
 
     _getOrderMode() {
@@ -107,6 +120,8 @@ export class AppGridOrderController {
 
     _compareOrderedItems(left, right) {
         const mode = this._getOrderMode();
+        if (mode === "manual") return this._compareManualItems(left, right);
+
         const counts = this._getDictionary("app-grid-launch-counts");
         const lastUsed = this._getDictionary("app-grid-last-used");
         const leftId = this._getItemId(left);
@@ -128,7 +143,81 @@ export class AppGridOrderController {
         return mode === "name-descending" ? -nameOrder : nameOrder;
     }
 
+    _compareManualItems(left, right) {
+        const order = this._getManualOrder();
+        const leftId = this._getManualItemId(left);
+        const rightId = this._getManualItemId(right);
+        const leftPosition = leftId ? order.indexOf(leftId) : -1;
+        const rightPosition = rightId ? order.indexOf(rightId) : -1;
+
+        if (leftPosition >= 0 && rightPosition >= 0)
+            return leftPosition - rightPosition;
+        if (leftPosition >= 0) return -1;
+        if (rightPosition >= 0) return 1;
+
+        return this._compareNames(left, right);
+    }
+
+    _getManualOrder() {
+        return this._settings.get_strv("app-grid-manual-order");
+    }
+
+    _setManualOrder(order) {
+        this._settings.set_strv("app-grid-manual-order", order);
+        this._refreshAppGrid();
+    }
+
+    _normalizeManualOrder(items) {
+        const availableIds = items
+            .map((item) => this._getManualItemId(item))
+            .filter(Boolean);
+        const availableSet = new Set(availableIds);
+        const currentOrder = this._getManualOrder();
+        const normalizedOrder = [];
+        const normalizedSet = new Set();
+
+        for (const id of currentOrder) {
+            if (availableSet.has(id) && !normalizedSet.has(id)) {
+                normalizedOrder.push(id);
+                normalizedSet.add(id);
+            }
+        }
+
+        for (const id of availableIds) {
+            if (!normalizedSet.has(id)) {
+                normalizedOrder.push(id);
+                normalizedSet.add(id);
+            }
+        }
+
+        if (normalizedOrder.join("\n") !== currentOrder.join("\n"))
+            this._settings.set_strv("app-grid-manual-order", normalizedOrder);
+
+        return normalizedOrder;
+    }
+
+    moveItem(itemId, targetIndex) {
+        const order = this._getManualOrder().filter((id) => id !== itemId);
+        const index = Math.max(0, Math.min(targetIndex, order.length));
+        order.splice(index, 0, itemId);
+        this._setManualOrder(order);
+    }
+
+    resetManualOrder() {
+        this._settings.reset("app-grid-manual-order");
+        this._refreshAppGrid();
+    }
+
+    _refreshAppGrid() {
+        this._appDisplay?._redisplay?.();
+        this._appDisplay?._grid?.queue_relayout?.();
+    }
+
     _getItemId(item) {
+        return item.app ? this._getAppId(item.app) : "";
+    }
+
+    _getManualItemId(item) {
         return item.app ? this._getAppId(item.app) : "";
     }
 
