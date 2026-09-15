@@ -28,6 +28,8 @@ export class AppGridLayoutController {
         this._pageNavigationOriginalIndex = null;
         this._navigationButtonsLayoutManager = null;
         this._originalSyncPageIndicatorsVisibility = null;
+        this._originalSyncPageIndicators = null;
+        this._navigationButtonsSyncOwner = null;
         this._originalPageIndicatorsSetCurrentPosition = null;
         this._originalPageIndicatorsUpdateIndicator = null;
         this._patchAppGridIdleId = 0;
@@ -116,18 +118,38 @@ export class AppGridLayoutController {
                 ? appDisplay
                 : parent.layout_manager;
 
-        const originalSync = syncOwner?._syncPageIndicatorsVisibility;
+        const originalSyncVisibility = syncOwner?._syncPageIndicatorsVisibility;
 
-        if (typeof originalSync === "function") {
+        const originalSyncIndicators = syncOwner?._syncPageIndicators;
+
+        if (
+            typeof originalSyncVisibility === "function" ||
+            typeof originalSyncIndicators === "function"
+        ) {
             const controller = this;
 
             this._navigationButtonsLayoutManager = syncOwner;
-            this._originalSyncPageIndicatorsVisibility = originalSync;
 
-            syncOwner._syncPageIndicatorsVisibility = function (...args) {
-                originalSync.apply(this, args);
-                controller._enforceNavigationButtonsVisibility();
-            };
+            if (typeof originalSyncVisibility === "function") {
+                this._originalSyncPageIndicatorsVisibility =
+                    originalSyncVisibility;
+
+                syncOwner._syncPageIndicatorsVisibility = function (...args) {
+                    originalSyncVisibility.apply(this, args);
+
+                    controller._lockNavigationButtons();
+                };
+            }
+
+            if (typeof originalSyncIndicators === "function") {
+                this._originalSyncPageIndicators = originalSyncIndicators;
+
+                syncOwner._syncPageIndicators = function (...args) {
+                    originalSyncIndicators.apply(this, args);
+
+                    controller._lockNavigationButtons();
+                };
+            }
         }
 
         this._navigationButtonsChangedId = this._settings.connect(
@@ -138,50 +160,84 @@ export class AppGridLayoutController {
         this._updateNavigationButtons();
     }
 
-    _updateNavigationButtons() {
-    const appDisplay = this._appDisplay;
+    _lockNavigationButtons() {
+        const appDisplay = this._appDisplay;
 
-    if (!appDisplay) return;
+        if (!appDisplay) return;
 
-    const showButtons = this._settings.get_boolean(
-        "show-app-grid-navigation-buttons",
-    );
+        const buttons = [
+            appDisplay._prevPageArrow,
+            appDisplay._nextPageArrow,
+        ].filter(Boolean);
 
-    const syncOwner = this._navigationButtonsLayoutManager;
-    const originalSync = this._originalSyncPageIndicatorsVisibility;
+        for (const button of buttons) {
+            button.translation_x = 0;
+            button.translation_y = 0;
 
-    if (syncOwner && originalSync)
-        originalSync.call(syncOwner, false);
+            button.remove_transition("opacity");
 
-    /*
-     * The navigation container now contains both:
-     *
-     *     previous → page indicators → next
-     *
-     * Keep the container alive even when the navigation buttons
-     * are disabled. Only the two arrow buttons must be hidden.
-     */
-    if (!this._pageNavigationContainer)
-        this._createPageNavigation();
+            button.visible = true;
+            button.opacity = 255;
+        }
 
-    this._enforceNavigationButtonsVisibility();
+        const pageIndicators = appDisplay._pageIndicators;
 
-    /*
-     * Keep page indicators visible independently of the arrow
-     * visibility setting.
-     */
-    const pageIndicators = appDisplay._pageIndicators;
+        if (pageIndicators) {
+            pageIndicators.translation_x = 0;
+            pageIndicators.translation_y = 0;
+        }
 
-    if (pageIndicators) {
-        pageIndicators.visible = true;
-
-        for (const indicator of pageIndicators.get_children?.() ?? [])
-            indicator.visible = true;
+        this._enforceNavigationButtonsVisibility();
     }
 
-    if (this._pageNavigationContainer)
-        this._updatePageNavigationOrientation();
-}
+    _updateNavigationButtons() {
+        const appDisplay = this._appDisplay;
+
+        if (!appDisplay) return;
+
+        const showButtons = this._settings.get_boolean(
+            "show-app-grid-navigation-buttons",
+        );
+
+        const syncOwner = this._navigationButtonsLayoutManager;
+        const originalSync = this._originalSyncPageIndicatorsVisibility;
+
+        if (syncOwner && originalSync) originalSync.call(syncOwner, false);
+
+        this._createPageNavigation();
+
+        this._lockNavigationButtons();
+
+        this._enforceNavigationButtonsVisibility();
+
+        /*
+         * The navigation container now contains both:
+         *
+         *     previous → page indicators → next
+         *
+         * Keep the container alive even when the navigation buttons
+         * are disabled. Only the two arrow buttons must be hidden.
+         */
+        if (!this._pageNavigationContainer) this._createPageNavigation();
+
+        this._enforceNavigationButtonsVisibility();
+
+        /*
+         * Keep page indicators visible independently of the arrow
+         * visibility setting.
+         */
+        const pageIndicators = appDisplay._pageIndicators;
+
+        if (pageIndicators) {
+            pageIndicators.visible = true;
+
+            for (const indicator of pageIndicators.get_children?.() ?? [])
+                indicator.visible = true;
+        }
+
+        if (this._pageNavigationContainer)
+            this._updatePageNavigationOrientation();
+    }
 
     _destroyPageNavigation() {
         const navigation = this._pageNavigationContainer;
@@ -488,13 +544,6 @@ export class AppGridLayoutController {
     }
 
     _unpatchNavigationButtons() {
-        if (this._navigationButtonsChangedId) {
-            this._settings.disconnect(this._navigationButtonsChangedId);
-            this._navigationButtonsChangedId = 0;
-        }
-
-        const appDisplay = this._appDisplay;
-
         if (
             this._navigationButtonsLayoutManager &&
             this._originalSyncPageIndicatorsVisibility &&
@@ -506,25 +555,19 @@ export class AppGridLayoutController {
                 this._originalSyncPageIndicatorsVisibility;
         }
 
-        this._navigationButtonsLayoutManager = null;
-        this._originalSyncPageIndicatorsVisibility = null;
-
-        if (!appDisplay) return;
-
-        const buttons = [
-            appDisplay._nextPageArrow,
-            appDisplay._prevPageArrow,
-        ].filter(Boolean);
-
-        for (const button of buttons) {
-            button.remove_transition("opacity");
-            button.visible = true;
-            button.opacity = 255;
-            button.reactive = true;
+        if (
+            this._navigationButtonsLayoutManager &&
+            this._originalSyncPageIndicators &&
+            this._navigationButtonsLayoutManager._syncPageIndicators !==
+                this._originalSyncPageIndicators
+        ) {
+            this._navigationButtonsLayoutManager._syncPageIndicators =
+                this._originalSyncPageIndicators;
         }
 
-        this._navigationButtonsParent = null;
-        this._navigationButtonsOriginalIndices = [];
+        this._navigationButtonsLayoutManager = null;
+        this._originalSyncPageIndicatorsVisibility = null;
+        this._originalSyncPageIndicators = null;
     }
 
     _hideNavigationButtons() {
