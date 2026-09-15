@@ -118,39 +118,51 @@ export class AppGridLayoutController {
                 ? appDisplay
                 : parent.layout_manager;
 
-        const originalSyncVisibility = syncOwner?._syncPageIndicatorsVisibility;
+        const originalSyncVisibility =
+    syncOwner?._syncPageIndicatorsVisibility;
 
-        const originalSyncIndicators = syncOwner?._syncPageIndicators;
+const originalSyncIndicators =
+    syncOwner?._syncPageIndicators;
 
-        if (
-            typeof originalSyncVisibility === "function" ||
-            typeof originalSyncIndicators === "function"
-        ) {
-            const controller = this;
+if (
+    typeof originalSyncVisibility === "function" ||
+    typeof originalSyncIndicators === "function"
+) {
+    const controller = this;
 
-            this._navigationButtonsLayoutManager = syncOwner;
+    this._navigationButtonsLayoutManager = syncOwner;
 
-            if (typeof originalSyncVisibility === "function") {
-                this._originalSyncPageIndicatorsVisibility =
-                    originalSyncVisibility;
+    if (typeof originalSyncVisibility === "function") {
+        this._originalSyncPageIndicatorsVisibility =
+            originalSyncVisibility;
 
-                syncOwner._syncPageIndicatorsVisibility = function (...args) {
-                    originalSyncVisibility.apply(this, args);
+        syncOwner._syncPageIndicatorsVisibility = function (...args) {
+            /*
+             * GNOME normally uses this method to animate and hide
+             * the page arrows during DND.
+             *
+             * The arrows have been moved into our own navigation
+             * container, so GNOME must no longer control them.
+             */
+            controller._enforceNavigationButtonsVisibility();
+        };
+    }
 
-                    controller._lockNavigationButtons();
-                };
-            }
+    if (typeof originalSyncIndicators === "function") {
+        this._originalSyncPageIndicators =
+            originalSyncIndicators;
 
-            if (typeof originalSyncIndicators === "function") {
-                this._originalSyncPageIndicators = originalSyncIndicators;
+        syncOwner._syncPageIndicators = function (...args) {
+            /*
+             * Keep GNOME's indicator/page-preview calculations,
+             * but prevent them from moving our navigation arrows.
+             */
+            originalSyncIndicators.apply(this, args);
 
-                syncOwner._syncPageIndicators = function (...args) {
-                    originalSyncIndicators.apply(this, args);
-
-                    controller._lockNavigationButtons();
-                };
-            }
-        }
+            controller._lockNavigationButtons();
+        };
+    }
+}
 
         this._navigationButtonsChangedId = this._settings.connect(
             "changed::show-app-grid-navigation-buttons",
@@ -161,34 +173,24 @@ export class AppGridLayoutController {
     }
 
     _lockNavigationButtons() {
-        const appDisplay = this._appDisplay;
+    const appDisplay = this._appDisplay;
 
-        if (!appDisplay) return;
+    if (!appDisplay) return;
 
-        const buttons = [
-            appDisplay._prevPageArrow,
-            appDisplay._nextPageArrow,
-        ].filter(Boolean);
+    const buttons = [
+        appDisplay._prevPageArrow,
+        appDisplay._nextPageArrow,
+    ].filter(Boolean);
 
-        for (const button of buttons) {
-            button.translation_x = 0;
-            button.translation_y = 0;
+    for (const button of buttons) {
+        button.remove_transition("opacity");
 
-            button.remove_transition("opacity");
-
-            button.visible = true;
-            button.opacity = 255;
-        }
-
-        const pageIndicators = appDisplay._pageIndicators;
-
-        if (pageIndicators) {
-            pageIndicators.translation_x = 0;
-            pageIndicators.translation_y = 0;
-        }
-
-        this._enforceNavigationButtonsVisibility();
+        button.translation_x = 0;
+        button.translation_y = 0;
     }
+
+    this._enforceNavigationButtonsVisibility();
+}
 
     _updateNavigationButtons() {
         const appDisplay = this._appDisplay;
@@ -202,13 +204,14 @@ export class AppGridLayoutController {
         const syncOwner = this._navigationButtonsLayoutManager;
         const originalSync = this._originalSyncPageIndicatorsVisibility;
 
-        if (syncOwner && originalSync) originalSync.call(syncOwner, false);
+        if (syncOwner && originalSync)
+            originalSync.call(syncOwner, false);
 
         this._createPageNavigation();
 
         this._lockNavigationButtons();
 
-        this._enforceNavigationButtonsVisibility();
+
 
         /*
          * The navigation container now contains both:
