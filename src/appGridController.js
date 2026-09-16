@@ -117,9 +117,11 @@ export class AppGridController {
         appDisplay._showPinnedAppsPatched = true;
 
         this._showPinnedAppsChangedId = this._settings.connect(
-            "changed::show-pinned-apps",
-            () => appDisplay._redisplay?.(),
-        );
+    "changed::show-pinned-apps",
+    () => appDisplay._redisplay?.(),
+);
+
+appDisplay._redisplay?.();
     }
 
     _isAppGridDrag(source) {

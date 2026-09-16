@@ -211,8 +211,6 @@ if (
 
         this._lockNavigationButtons();
 
-
-
         /*
          * The navigation container now contains both:
          *

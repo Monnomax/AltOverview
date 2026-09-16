@@ -363,8 +363,8 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
         });
         const colsSpin = new Gtk.SpinButton({
             adjustment: new Gtk.Adjustment({
-                lower: 5,
-                upper: 15,
+                lower: 6,
+                upper: 12,
                 step_increment: 1,
             }),
             numeric: true,
@@ -386,7 +386,7 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
         const rowsSpin = new Gtk.SpinButton({
             adjustment: new Gtk.Adjustment({
                 lower: 3,
-                upper: 9,
+                upper: 6,
                 step_increment: 1,
             }),
             numeric: true,
