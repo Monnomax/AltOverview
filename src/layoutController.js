@@ -21,6 +21,7 @@ export class LayoutController {
         if (this._searchEntry) {
             this._searchEntry.visible = true;
             this._searchEntry.set_height(-1);
+            this._searchEntry.translation_y = 0;
         }
     }
 
@@ -36,6 +37,21 @@ export class LayoutController {
 
         this._searchEntry.visible = show;
         this._searchEntry.set_height(show ? -1 : 0);
+
+        this._positionSearchEntry();
+    }
+
+    _positionSearchEntry() {
+        if (!this._searchEntry) return;
+
+        const show = this._settings.get_boolean("show-search-entry");
+
+        if (!show) {
+            this._searchEntry.translation_y = 0;
+            return;
+        }
+
+        this._searchEntry.translation_y = 8;
     }
 
     shouldHideWorkspacesPeek() {
@@ -131,10 +147,30 @@ export class LayoutController {
     _positionWorkspaceThumbnails(workspaceBox, workAreaBox) {
         if (!workspaceBox || !workAreaBox) return;
 
+        const TOP_GAP = 20;
+        const THUMBNAILS_GAP = 20;
+
+        let y = workAreaBox.y1 + TOP_GAP;
+
+        /*
+         * When Search is visible, place thumbnails below it.
+         */
+        if (
+            this._searchEntry &&
+            this._settings.get_boolean("show-search-entry") &&
+            this._searchEntry.visible
+        ) {
+            const [, searchY] = this._searchEntry.get_transformed_position();
+
+            const searchHeight = this._searchEntry.get_height();
+
+            y = searchY + searchHeight + THUMBNAILS_GAP;
+        }
+
         workspaceBox.set_origin(
             workAreaBox.x1 +
                 (workAreaBox.get_width() - workspaceBox.get_width()) / 2,
-            workAreaBox.y1,
+            y,
         );
     }
 
@@ -207,12 +243,21 @@ export class LayoutController {
              */
             if (
                 state === ControlsState.APP_GRID &&
-                controller.shouldHideWorkspacesPeek()
+                controller.shouldHideWorkspacesPeek() &&
+                workAreaBox
             ) {
+                /*
+                 * Thumbnails are disabled.
+                 *
+                 * Keep the workspace allocation out of the visible
+                 * area, but do not let the hidden thumbnails reserve
+                 * vertical space for the AppGrid.
+                 */
                 workspaceBox.set_origin(
-                    (workAreaBox?.x2 ?? 100000) + 1000,
-                    (workAreaBox?.y2 ?? 100000) + 1000,
+                    workAreaBox.x2 + 1000000,
+                    workAreaBox.y2 + 1000000,
                 );
+                workspaceBox.set_size(0, 0);
             }
 
             /*
@@ -248,12 +293,35 @@ export class LayoutController {
                 );
 
             /*
-             * APP_GRID occupies the entire physical work area.
+             * When Search and workspace thumbnails are both hidden,
+             * the AppGrid should be vertically centered in the complete
+             * work area.
              */
-            if (state === ControlsState.APP_GRID) {
-                appDisplayBox.set_origin(...this._workAreaBox.get_origin());
+            if (
+                state === ControlsState.APP_GRID &&
+                controller.shouldCenterWorkspace() &&
+                appDisplayBox
+            ) {
+                const workAreaBox = args.find(
+                    (arg) =>
+                        arg &&
+                        typeof arg.get_width === "function" &&
+                        typeof arg.get_height === "function" &&
+                        typeof arg.x1 === "number" &&
+                        typeof arg.y1 === "number" &&
+                        typeof arg.x2 === "number" &&
+                        typeof arg.y2 === "number",
+                );
 
-                appDisplayBox.set_size(...this._workAreaBox.get_size());
+                if (workAreaBox) {
+                    const y =
+                        workAreaBox.y1 +
+                        (workAreaBox.get_height() -
+                            appDisplayBox.get_height()) /
+                            2;
+
+                    appDisplayBox.set_origin(appDisplayBox.x1, y);
+                }
             }
 
             return appDisplayBox;

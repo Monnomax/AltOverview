@@ -118,51 +118,48 @@ export class AppGridLayoutController {
                 ? appDisplay
                 : parent.layout_manager;
 
-        const originalSyncVisibility =
-    syncOwner?._syncPageIndicatorsVisibility;
+        const originalSyncVisibility = syncOwner?._syncPageIndicatorsVisibility;
 
-const originalSyncIndicators =
-    syncOwner?._syncPageIndicators;
+        const originalSyncIndicators = syncOwner?._syncPageIndicators;
 
-if (
-    typeof originalSyncVisibility === "function" ||
-    typeof originalSyncIndicators === "function"
-) {
-    const controller = this;
+        if (
+            typeof originalSyncVisibility === "function" ||
+            typeof originalSyncIndicators === "function"
+        ) {
+            const controller = this;
 
-    this._navigationButtonsLayoutManager = syncOwner;
+            this._navigationButtonsLayoutManager = syncOwner;
 
-    if (typeof originalSyncVisibility === "function") {
-        this._originalSyncPageIndicatorsVisibility =
-            originalSyncVisibility;
+            if (typeof originalSyncVisibility === "function") {
+                this._originalSyncPageIndicatorsVisibility =
+                    originalSyncVisibility;
 
-        syncOwner._syncPageIndicatorsVisibility = function (...args) {
-            /*
-             * GNOME normally uses this method to animate and hide
-             * the page arrows during DND.
-             *
-             * The arrows have been moved into our own navigation
-             * container, so GNOME must no longer control them.
-             */
-            controller._enforceNavigationButtonsVisibility();
-        };
-    }
+                syncOwner._syncPageIndicatorsVisibility = function (...args) {
+                    /*
+                     * GNOME normally uses this method to animate and hide
+                     * the page arrows during DND.
+                     *
+                     * The arrows have been moved into our own navigation
+                     * container, so GNOME must no longer control them.
+                     */
+                    controller._enforceNavigationButtonsVisibility();
+                };
+            }
 
-    if (typeof originalSyncIndicators === "function") {
-        this._originalSyncPageIndicators =
-            originalSyncIndicators;
+            if (typeof originalSyncIndicators === "function") {
+                this._originalSyncPageIndicators = originalSyncIndicators;
 
-        syncOwner._syncPageIndicators = function (...args) {
-            /*
-             * Keep GNOME's indicator/page-preview calculations,
-             * but prevent them from moving our navigation arrows.
-             */
-            originalSyncIndicators.apply(this, args);
+                syncOwner._syncPageIndicators = function (...args) {
+                    /*
+                     * Keep GNOME's indicator/page-preview calculations,
+                     * but prevent them from moving our navigation arrows.
+                     */
+                    originalSyncIndicators.apply(this, args);
 
-            controller._lockNavigationButtons();
-        };
-    }
-}
+                    controller._lockNavigationButtons();
+                };
+            }
+        }
 
         this._navigationButtonsChangedId = this._settings.connect(
             "changed::show-app-grid-navigation-buttons",
@@ -173,24 +170,24 @@ if (
     }
 
     _lockNavigationButtons() {
-    const appDisplay = this._appDisplay;
+        const appDisplay = this._appDisplay;
 
-    if (!appDisplay) return;
+        if (!appDisplay) return;
 
-    const buttons = [
-        appDisplay._prevPageArrow,
-        appDisplay._nextPageArrow,
-    ].filter(Boolean);
+        const buttons = [
+            appDisplay._prevPageArrow,
+            appDisplay._nextPageArrow,
+        ].filter(Boolean);
 
-    for (const button of buttons) {
-        button.remove_transition("opacity");
+        for (const button of buttons) {
+            button.remove_transition("opacity");
 
-        button.translation_x = 0;
-        button.translation_y = 0;
+            button.translation_x = 0;
+            button.translation_y = 0;
+        }
+
+        this._enforceNavigationButtonsVisibility();
     }
-
-    this._enforceNavigationButtonsVisibility();
-}
 
     _updateNavigationButtons() {
         const appDisplay = this._appDisplay;
@@ -204,8 +201,7 @@ if (
         const syncOwner = this._navigationButtonsLayoutManager;
         const originalSync = this._originalSyncPageIndicatorsVisibility;
 
-        if (syncOwner && originalSync)
-            originalSync.call(syncOwner, false);
+        if (syncOwner && originalSync) originalSync.call(syncOwner, false);
 
         this._createPageNavigation();
 
@@ -826,9 +822,13 @@ if (
                 return;
 
             if (gridActor.get_n_children() === 0) return;
+
+            const baseIconSize = this._iconSize;
+
             for (let index = 0; index < gridActor.get_n_children(); index++)
                 controller._iconController.applyIconSize(
                     gridActor.get_child_at_index(index),
+                    baseIconSize,
                 );
 
             const child = gridActor.get_child_at_index(0);

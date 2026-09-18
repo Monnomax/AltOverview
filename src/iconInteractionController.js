@@ -3,12 +3,13 @@ import { IconAnimator } from "./iconAnimations.js";
 export class IconInteractionController {
     static ICON_TEXTURE_OVERSAMPLE = 1.5;
 
-    static ICON_SIZE_PX = {
-        small: 48,
-        medium: 64,
-        large: 80,
-        "extra-large": 96,
-    };
+    static ICON_SIZE_SCALE = {
+    smallest: 0.6,
+    small: 0.8,
+    normal: 1.0,
+    large: 1.2,
+    largest: 1.4,
+};
 
     constructor(settings, appDisplay) {
         this._settings = settings;
@@ -32,19 +33,32 @@ export class IconInteractionController {
         else label.visible = true;
     }
 
-    applyIconSize(item) {
-        const icon = item?.icon?.icon;
-        if (!icon || icon.is_destroyed?.()) return;
-        if (icon._chOriginalIconSize === undefined)
-            icon._chOriginalIconSize = icon.icon_size;
+    applyIconSize(item, baseSize = null) {
+    const icon = item?.icon?.icon;
+    if (!icon || icon.is_destroyed?.()) return;
 
-        const key = this._settings.get_string("app-grid-icon-size");
-        const displaySize = IconInteractionController.ICON_SIZE_PX[key] ?? 64;
-        icon.icon_size = Math.round(
-            displaySize * IconInteractionController.ICON_TEXTURE_OVERSAMPLE,
-        );
-        icon.set_size(displaySize, displaySize);
-    }
+    if (icon._chOriginalIconSize === undefined)
+        icon._chOriginalIconSize = icon.icon_size;
+
+    const key = this._settings.get_string("app-grid-icon-size");
+    const scale =
+        IconInteractionController.ICON_SIZE_SCALE[key] ?? 1.0;
+
+    const nominalSize =
+        Number.isFinite(baseSize) && baseSize > 0
+            ? baseSize
+            : icon._chOriginalIconSize;
+
+    const displaySize = Math.max(
+        1,
+        Math.round(nominalSize * scale),
+    );
+
+    icon.icon_size = Math.round(
+        displaySize * IconInteractionController.ICON_TEXTURE_OVERSAMPLE,
+    );
+    icon.set_size(displaySize, displaySize);
+}
 
     disable() {
         const grid = this._appDisplay?._grid;

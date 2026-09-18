@@ -17,7 +17,7 @@ const APP_GRID_NAMES_VISIBILITY = ["always", "never", "hover"];
 // Індекси відповідають порядку рядків у Gtk.StringList для рядка
 // "Розмір" у групі "Розмір іконок" — значення в px застосовуються
 // в extension.js (див. ICON_SIZE_PX там же).
-const APP_GRID_ICON_SIZE = ["small", "medium", "large", "extra-large"];
+const APP_GRID_ICON_SIZE = ["smallest", "small", "normal", "large", "largest"];
 
 const APP_GRID_ORDER = [
     "manual",
@@ -319,11 +319,11 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
         const tooltipRow = new Adw.ComboRow({
             title: _("Розташування"),
             model: new Gtk.StringList({
-                strings: [_("Над іконкою"), _("Під іконкою")],
-            }),
+    strings: [_("Над іконкою"), _("Під іконкою"), _("Приховати")],
+}),
         });
 
-        const tooltipPositions = ["above", "below"];
+        const tooltipPositions = ["above", "below", "hidden"];
         const currentTooltipPosition = settings.get_string(
             "workspace-tooltip-position",
         );
@@ -410,10 +410,11 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
             title: _("Розмір"),
             model: new Gtk.StringList({
                 strings: [
-                    _("Маленький 48 px"),
-                    _("Середній 64 px"),
-                    _("Великий 80 px"),
-                    _("Дуже великий 96 px"),
+                    _("Найменший"),
+                    _("Малий"),
+                    _("Звичайний"),
+                    _("Великий"),
+                    _("Найбільший"),
                 ],
             }),
         });
@@ -422,11 +423,11 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
         const currentIconSizeIndex =
             APP_GRID_ICON_SIZE.indexOf(currentIconSizeValue);
         iconSizeRow.set_selected(
-            currentIconSizeIndex >= 0 ? currentIconSizeIndex : 1,
+            currentIconSizeIndex >= 0 ? currentIconSizeIndex : 2,
         );
 
         iconSizeRow.connect("notify::selected", () => {
-            const value = APP_GRID_ICON_SIZE[iconSizeRow.selected] ?? "medium";
+            const value = APP_GRID_ICON_SIZE[iconSizeRow.selected] ?? "normal";
             if (settings.get_string("app-grid-icon-size") !== value)
                 settings.set_string("app-grid-icon-size", value);
         });
