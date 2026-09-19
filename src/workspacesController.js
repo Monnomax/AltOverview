@@ -1,5 +1,9 @@
 import Meta from "gi://Meta";
 
+import { InjectionManager } from "resource:///org/gnome/shell/extensions/extension.js";
+
+import { WorkspacesView } from "resource:///org/gnome/shell/ui/workspacesView.js";
+
 export class WorkspacesController {
     constructor(settings, workspacesView, workspacesDisplay) {
         this._settings = settings;
@@ -7,14 +11,44 @@ export class WorkspacesController {
         this._workspacesDisplay = workspacesDisplay;
 
         this._workspaceManager = global.workspace_manager;
-        this._originalLayout = null;
+        this._injectionManager = new InjectionManager();
+
+        this._settingsChangedIds = [];
     }
 
     enable() {
+        this._patchWorkspaceSpacing();
+
+        this._settingsChangedIds.push(
+            this._settings.connect("changed::workspaces-scroll-direction", () =>
+                this.updateOrientation(),
+            ),
+        );
+
+        this._settingsChangedIds.push(
+            this._settings.connect("changed::workspace-spacing-vertical", () =>
+                this._queueWorkspaceRelayout(),
+            ),
+        );
+
+        this._settingsChangedIds.push(
+            this._settings.connect(
+                "changed::workspace-spacing-horizontal",
+                () => this._queueWorkspaceRelayout(),
+            ),
+        );
+
         this.updateOrientation();
     }
 
     disable() {
+        for (const id of this._settingsChangedIds)
+            this._settings.disconnect(id);
+
+        this._settingsChangedIds = [];
+
+        this._injectionManager.clear();
+
         this._restoreWorkspaceLayout();
     }
 
@@ -25,16 +59,42 @@ export class WorkspacesController {
 
         this._setWorkspaceLayout(vertical);
 
-        /*
-         * WorkspacesView already knows how to lay out workspaces according
-         * to Meta.WorkspaceManager.layout_rows.
-         *
-         * Rebuild its geometry after changing the Mutter layout.
-         */
         this._workspacesView?._updateWorkspaces();
         this._workspacesView?.queue_relayout();
 
         this._workspacesDisplay?._updateTrackerOrientation();
+
+        this._queueWorkspaceRelayout();
+    }
+
+    _patchWorkspaceSpacing() {
+        const controller = this;
+
+        this._injectionManager.overrideMethod(
+            WorkspacesView.prototype,
+            "_getSpacing",
+            () => {
+                return function (box, fitMode, vertical) {
+                    return controller._getWorkspaceSpacing(vertical);
+                };
+            },
+        );
+    }
+
+    _getWorkspaceSpacing(vertical) {
+        const key = vertical
+            ? "workspace-spacing-vertical"
+            : "workspace-spacing-horizontal";
+
+        return this._settings.get_int(key);
+    }
+
+    _queueWorkspaceRelayout() {
+        const workspacesViews = this._workspacesDisplay?._workspacesViews;
+
+        if (!workspacesViews) return;
+
+        for (const view of workspacesViews) view?.queue_relayout();
     }
 
     _setWorkspaceLayout(vertical) {
@@ -43,23 +103,6 @@ export class WorkspacesController {
         if (!manager?.override_workspace_layout) return;
 
         if (vertical) {
-            /*
-             * One column, unlimited rows.
-             *
-             * layout_rows = -1
-             * layout_columns = 1
-             *
-             * Workspaces become:
-             *
-             *   0
-             *   1
-             *   2
-             *   3
-             *
-             * instead of:
-             *
-             *   0 → 1 → 2 → 3
-             */
             manager.override_workspace_layout(
                 Meta.DisplayCorner.TOPLEFT,
                 true,
@@ -67,11 +110,6 @@ export class WorkspacesController {
                 1,
             );
         } else {
-            /*
-             * One row, unlimited columns.
-             *
-             * This is GNOME's normal horizontal workspace layout.
-             */
             manager.override_workspace_layout(
                 Meta.DisplayCorner.TOPLEFT,
                 false,
@@ -86,9 +124,6 @@ export class WorkspacesController {
 
         if (!manager?.override_workspace_layout) return;
 
-        /*
-         * Restore GNOME's normal horizontal workspace layout.
-         */
         manager.override_workspace_layout(
             Meta.DisplayCorner.TOPLEFT,
             false,
@@ -98,7 +133,6 @@ export class WorkspacesController {
 
         this._workspacesView?._updateWorkspaces();
         this._workspacesView?.queue_relayout();
-
         this._workspacesDisplay?._updateTrackerOrientation();
     }
 }
