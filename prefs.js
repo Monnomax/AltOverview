@@ -319,8 +319,8 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
         const tooltipRow = new Adw.ComboRow({
             title: _("Розташування"),
             model: new Gtk.StringList({
-    strings: [_("Над іконкою"), _("Під іконкою"), _("Приховати")],
-}),
+                strings: [_("Над іконкою"), _("Під іконкою"), _("Приховати")],
+            }),
         });
 
         const tooltipPositions = ["above", "below", "hidden"];
@@ -606,20 +606,126 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
 
         row.connect("notify::selected", () => {
             const direction = SCROLL_DIRECTIONS[row.selected] ?? "vertical";
+
             if (settings.get_string(settingsKey) !== direction)
                 settings.set_string(settingsKey, direction);
         });
 
-        // Синхронізуємо рядок, якщо значення зміниться ззовні
-        // (наприклад, через dconf-editor чи gsettings у терміналі).
         const changedId = settings.connect(`changed::${settingsKey}`, () => {
             const value = settings.get_string(settingsKey);
             const index = SCROLL_DIRECTIONS.indexOf(value);
+
             if (index >= 0 && index !== row.selected) row.set_selected(index);
         });
+
         row.connect("destroy", () => settings.disconnect(changedId));
 
         group.add(row);
+
+        /*
+         * Для вкладки "Стільниці" додаємо повзунок відстані.
+         * Для "Сітки програм" ця частина не створюється.
+         */
+        if (settingsKey !== "workspaces-scroll-direction") return;
+
+        const spacingRow = new Adw.ActionRow({
+            title: _("Відстань між стільницями"),
+        });
+
+        const getSpacingKey = () => {
+            return settings.get_string("workspaces-scroll-direction") ===
+                "vertical"
+                ? "workspace-spacing-vertical"
+                : "workspace-spacing-horizontal";
+        };
+
+        const spacingAdjustment = new Gtk.Adjustment({
+            lower: 0,
+            upper: 100,
+            step_increment: 1,
+            page_increment: 5,
+        });
+
+        const spacingScale = new Gtk.Scale({
+            orientation: Gtk.Orientation.HORIZONTAL,
+            adjustment: spacingAdjustment,
+            valign: Gtk.Align.CENTER,
+            hexpand: true,
+            width_request: 180,
+            digits: 0,
+            draw_value: true,
+        });
+
+        spacingRow.add_suffix(spacingScale);
+        group.add(spacingRow);
+
+        let updating = false;
+
+        /*
+         * Встановлює повзунок із поточного значення
+         * активного напрямку.
+         */
+        const refreshSpacing = () => {
+            const key = getSpacingKey();
+            const value = settings.get_int(key);
+
+            updating = true;
+            spacingAdjustment.set_value(value);
+            updating = false;
+        };
+
+        /*
+         * Рух повзунка записує значення саме в ключ
+         * поточного напрямку.
+         */
+        const valueChangedId = spacingAdjustment.connect(
+            "value-changed",
+            () => {
+                if (updating) return;
+
+                const key = getSpacingKey();
+                const value = Math.round(spacingAdjustment.value);
+
+                if (settings.get_int(key) !== value)
+                    settings.set_int(key, value);
+            },
+        );
+
+        /*
+         * При перемиканні вертикального/горизонтального режиму
+         * показуємо збережене значення відповідного ключа.
+         */
+        const directionChangedId = settings.connect(
+            "changed::workspaces-scroll-direction",
+            refreshSpacing,
+        );
+
+        /*
+         * Якщо значення змінене зовні через GSettings,
+         * синхронізуємо повзунок.
+         */
+        const verticalSpacingChangedId = settings.connect(
+            "changed::workspace-spacing-vertical",
+            () => {
+                if (getSpacingKey() === "workspace-spacing-vertical")
+                    refreshSpacing();
+            },
+        );
+
+        const horizontalSpacingChangedId = settings.connect(
+            "changed::workspace-spacing-horizontal",
+            () => {
+                if (getSpacingKey() === "workspace-spacing-horizontal")
+                    refreshSpacing();
+            },
+        );
+
+        spacingRow.connect("destroy", () => {
+            settings.disconnect(directionChangedId);
+            settings.disconnect(verticalSpacingChangedId);
+            settings.disconnect(horizontalSpacingChangedId);
+            spacingAdjustment.disconnect(valueChangedId);
+        });
     }
 
     // Групи "Анімація іконок" та "Масштабування іконок" для вкладки

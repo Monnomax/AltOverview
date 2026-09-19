@@ -65,6 +65,20 @@
             <description>Напрямок прокручування коліщатком миші для перемикання робочих столів.</description>
         </key>
 
+                <key name="workspace-spacing-vertical" type="i">
+            <range min="0" max="100" />
+            <default>30</default>
+            <summary>Відстань між стільницями у вертикальному режимі</summary>
+            <description>Відстань у пікселях між сусідніми стільницями при вертикальному прокручуванні.</description>
+        </key>
+
+        <key name="workspace-spacing-horizontal" type="i">
+            <range min="0" max="100" />
+            <default>10</default>
+            <summary>Відстань між стільницями у горизонтальному режимі</summary>
+            <description>Відстань у пікселях між сусідніми стільницями при горизонтальному прокручуванні.</description>
+        </key>
+
         <key name="workspace-size" type="i">
             <range min="-100" max="100" />
             <default>0</default>
