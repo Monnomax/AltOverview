@@ -4,6 +4,7 @@ import * as Config from "resource:///org/gnome/shell/misc/config.js";
 import { OverviewChromeController } from "./src/overviewChromeController.js";
 import { AppGridController } from "./src/appGridController.js";
 import { AppGridLayoutController } from "./src/appGridLayoutController.js";
+import { DndManager } from "./src/dndManager.js";
 //import { AppGridOrderController } from "./src/appGridOrderController.js";
 import { BackgroundController } from "./src/backgroundController.js";
 import { IconInteractionController } from "./src/iconInteractionController.js";
@@ -183,6 +184,7 @@ export default class OverviewBackgroundExtension extends Extension {
                 workspacesDisplay,
             );
             this._appGridController = new AppGridController(settings, appDisplay);
+            this._dndManager = new DndManager(appDisplay, this._diagnostics);
             //this._appGridOrderController = new AppGridOrderController(
             //    settings,
             //    appDisplay,
@@ -214,6 +216,7 @@ export default class OverviewBackgroundExtension extends Extension {
             this._enableComponent("layout", this._layoutController);
             this._enableComponent("workspaces", this._workspacesController);
             this._enableComponent("app-grid", this._appGridController);
+            this._enableComponent("dnd", this._dndManager);
             this._runSafely("app-grid", "Update icon names visibility", () =>
                 this._iconController.updateNamesVisibility(),
             );
@@ -347,6 +350,7 @@ export default class OverviewBackgroundExtension extends Extension {
                     layout: Boolean(this._layoutController),
                     workspaces: Boolean(this._workspacesController),
                     appGrid: Boolean(this._appGridController),
+                    dnd: Boolean(this._dndManager),
                     iconInteraction: Boolean(this._iconController),
                     scrolling: Boolean(this._scrollController),
                     windowPreview: Boolean(this._windowPreviewController),
@@ -423,6 +427,7 @@ export default class OverviewBackgroundExtension extends Extension {
         this._disableComponent("scroll", this._scrollController);
         this._disableComponent("app-grid-layout", this._appGridLayoutController);
         this._disableComponent("icon-interaction", this._iconController);
+        this._disableComponent("dnd", this._dndManager);
         //this._appGridOrderController?.disable();
         this._disableComponent("app-grid", this._appGridController);
         this._disableComponent("workspaces", this._workspacesController);
@@ -434,6 +439,7 @@ export default class OverviewBackgroundExtension extends Extension {
         this._overviewChromeController = null;
         this._appGridLayoutController = null;
         this._iconController = null;
+        this._dndManager = null;
         this._appGridController = null;
         this._appGridOrderController = null;
         this._workspacesController = null;
