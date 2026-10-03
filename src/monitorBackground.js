@@ -1,12 +1,11 @@
 import Clutter from "gi://Clutter";
 import GObject from "gi://GObject";
-import Shell from "gi://Shell";
 import St from "gi://St";
 
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as Background from "resource:///org/gnome/shell/ui/background.js";
 
-import { GrainEffect, SaturationEffect } from "./effects.js";
+import { BackgroundEffects } from "./effects.js";
 
 export const MonitorBackground = GObject.registerClass(
     class MonitorBackground extends St.Widget {
@@ -18,14 +17,7 @@ export const MonitorBackground = GObject.registerClass(
 
             this._monitorIndex = monitorIndex;
             this._diagnostics = diagnostics;
-
-            this._brightnessEffect = new Clutter.BrightnessContrastEffect();
-            this._saturationEffect = new SaturationEffect();
-            this._blurEffect = new Shell.BlurEffect({
-                mode: Shell.BlurMode.ACTOR,
-                brightness: 1.0,
-            });
-            this._grainEffect = new GrainEffect();
+            this.effects = new BackgroundEffects();
 
             this._bgManager = new Background.BackgroundManager({
                 container: this,
@@ -34,11 +26,10 @@ export const MonitorBackground = GObject.registerClass(
                 controlPosition: false,
             });
 
-            this.add_effect_with_name("overview-bg-grain", this._grainEffect);
-
             this._changedId = this._bgManager.connect("changed", () => {
                 try {
-                    this._attachEffects();
+                    this._syncBackgroundActor();
+                    this._relayout();
                     this._diagnostics?.event(
                         "background",
                         "Wallpaper actor changed",
@@ -48,20 +39,22 @@ export const MonitorBackground = GObject.registerClass(
                 } catch (error) {
                     this._diagnostics?.error(
                         "background",
-                        "Could not attach wallpaper effects after change",
+                        "Could not update wallpaper after change",
                         error,
                         { monitor: this._monitorIndex },
                     );
                 }
             });
 
-            this._attachEffects();
+            this._syncBackgroundActor();
             this._relayout();
         }
 
-        _attachEffects() {
+        _syncBackgroundActor() {
             const actor = this._bgManager.backgroundActor;
+
             if (!actor) {
+                this.effects.setActors(null, this);
                 this._diagnostics?.event(
                     "background",
                     "Wallpaper actor is not available yet",
@@ -71,26 +64,7 @@ export const MonitorBackground = GObject.registerClass(
                 return;
             }
 
-            if (actor.get_effect("overview-bg-brightness") === null)
-                actor.add_effect_with_name(
-                    "overview-bg-brightness",
-                    this._brightnessEffect,
-                );
-            if (actor.get_effect("overview-bg-saturation") === null)
-                actor.add_effect_with_name(
-                    "overview-bg-saturation",
-                    this._saturationEffect,
-                );
-            if (actor.get_effect("overview-bg-blur") === null)
-                actor.add_effect_with_name(
-                    "overview-bg-blur",
-                    this._blurEffect,
-                );
-            this._brightnessEffect.queue_repaint();
-            this._saturationEffect.forceRepaint();
-            this._blurEffect.queue_repaint();
-            this._grainEffect.forceRepaint();
-            actor.queue_redraw();
+            this.effects.setActors(actor, this);
         }
 
         _relayout() {
@@ -120,27 +94,9 @@ export const MonitorBackground = GObject.registerClass(
                 );
                 return;
             }
+
             this.set_position(monitor.x, monitor.y);
             this.set_size(monitor.width, monitor.height);
-        }
-
-        setBrightness(percent) {
-            const value = Math.min(1, Math.max(-1, percent / 100));
-            this._brightnessEffect.set_brightness(value);
-            this._brightnessEffect.queue_repaint();
-        }
-
-        setSaturation(value) {
-            this._saturationEffect.setSaturation(value);
-        }
-
-        setBlurRadius(percent) {
-            this._blurEffect.radius = percent;
-            this._blurEffect.queue_repaint();
-        }
-
-        setGrain(percent) {
-            this._grainEffect.setAmount(percent);
         }
 
         vfunc_destroy() {
@@ -148,6 +104,7 @@ export const MonitorBackground = GObject.registerClass(
                 this._bgManager.disconnect(this._changedId);
                 this._changedId = 0;
             }
+            this.effects.setActors(null, this);
             this._bgManager.destroy();
             super.vfunc_destroy();
         }

@@ -66,10 +66,10 @@ export class BackgroundController {
         const grain = this._settings.get_int("grain");
 
         for (const background of this._backgrounds) {
-            background.setBrightness(brightness);
-            background.setSaturation(saturation);
-            background.setBlurRadius(blur);
-            background.setGrain(grain);
+            background.effects.setBrightness(brightness);
+            background.effects.setSaturation(saturation);
+            background.effects.setBlur(blur);
+            background.effects.setGrain(grain);
         }
     }
 
