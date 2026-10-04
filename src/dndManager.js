@@ -19,6 +19,9 @@ export class DndManager {
 
         this._pagesChangedId = 0;
         this._dragBeginId = 0;
+        this._dragEndId = 0;
+
+        this._lastDropTargetDiagnostic = null;
 
         this._enabled = false;
     }
@@ -73,7 +76,12 @@ export class DndManager {
         }
 
         this._dragBeginId = Main.overview.connect("item-drag-begin", () => {
+            this._lastDropTargetDiagnostic = null;
             this._patchAllItems();
+        });
+
+        this._dragEndId = Main.overview.connect("item-drag-end", () => {
+            appDisplay._removeDelayedMove?.();
         });
 
         this._enabled = true;
@@ -100,6 +108,14 @@ export class DndManager {
             } catch {}
 
             this._dragBeginId = 0;
+        }
+
+        if (this._dragEndId) {
+            try {
+                Main.overview.disconnect(this._dragEndId);
+            } catch {}
+
+            this._dragEndId = 0;
         }
 
         if (this._pagesChangedId && grid) {
@@ -159,6 +175,8 @@ export class DndManager {
         this._originalGetDropTarget = null;
         this._originalMoveItem = null;
 
+        this._lastDropTargetDiagnostic = null;
+
         this._enabled = false;
 
         this._diagnostics?.event("dnd", "DnD manager disabled", {}, "verbose");
@@ -194,18 +212,87 @@ export class DndManager {
         };
     }
 
+    /*
+     * Returns true when EMPTY_SPACE would simply append the source
+     * item immediately after its current position, meaning that the
+     * source is already the last visible item on the target page.
+     *
+     * This prevents:
+     *
+     *     EMPTY_SPACE -> move -> EMPTY_SPACE -> move -> ...
+     *
+     * while the pointer remains stationary at the end of a page.
+     */
+    _isAlreadyAtAppendPosition(appDisplay, page, source) {
+        const grid = appDisplay?._grid;
+
+        if (!grid || !source || page < 0) return false;
+
+        const [sourcePage, sourcePosition] = grid.getItemPosition(source);
+
+        if (sourcePage !== page || sourcePosition < 0) {
+            return false;
+        }
+
+        const pageItems = grid
+            .getItemsAtPage(page)
+            .filter((child) => child.visible);
+
+        if (pageItems.length === 0) return false;
+
+        return sourcePosition === pageItems.length - 1;
+    }
+
+    _hasUsableGridGeometry(grid) {
+        const layout = grid?.layout_manager;
+
+        return (
+            Number.isFinite(layout?._pageWidth) &&
+            layout._pageWidth > 0 &&
+            Number.isFinite(layout?._pageHeight) &&
+            layout._pageHeight > 0 &&
+            Number.isFinite(layout?.columns_per_page) &&
+            layout.columns_per_page > 0 &&
+            Number.isFinite(layout?.rows_per_page) &&
+            layout.rows_per_page > 0
+        );
+    }
+
     _maybeMoveItem(appDisplay, dragEvent) {
         const grid = appDisplay?._grid;
+
         const adjustment = appDisplay?._adjustment;
 
-        if (!grid || !dragEvent?.source) return;
+        if (!grid || !dragEvent?.source) {
+            return;
+        }
+
+        if (!this._hasUsableGridGeometry(grid)) {
+            appDisplay._removeDelayedMove?.();
+            return;
+        }
+
+        if (
+            !Number.isFinite(dragEvent.x) ||
+            !Number.isFinite(dragEvent.y)
+        ) {
+            appDisplay._removeDelayedMove?.();
+            return;
+        }
 
         const [success, x, y] = grid.transform_stage_point(
             dragEvent.x,
             dragEvent.y,
         );
 
-        if (!success) return;
+        if (
+            !success ||
+            !Number.isFinite(x) ||
+            !Number.isFinite(y)
+        ) {
+            appDisplay._removeDelayedMove?.();
+            return;
+        }
 
         const source = dragEvent.source;
 
@@ -216,7 +303,46 @@ export class DndManager {
             source,
         );
 
-        const item = position !== -1 ? grid.getItemAt(page, position) : null;
+        if (
+            !Number.isInteger(page) ||
+            page < 0 ||
+            !Number.isInteger(position) ||
+            position < -1
+        ) {
+            appDisplay._removeDelayedMove?.();
+            return;
+        }
+
+        const item = position >= 0 ? grid.getItemAt(page, position) : null;
+
+        /*
+         * EMPTY_SPACE means append.
+         *
+         * When the source has already reached the last visible item
+         * on this page, there is nothing left to do. Without this
+         * guard a stationary pointer at the end of the page causes
+         * grid.moveItem() to execute every 100 ms.
+         */
+        if (
+            position === -1 &&
+            dragLocation === IconGrid.DragLocation.EMPTY_SPACE &&
+            this._isAlreadyAtAppendPosition(appDisplay, page, source)
+        ) {
+            appDisplay._removeDelayedMove?.();
+
+            this._diagnostics?.event(
+                "dnd",
+                "Append target already reached",
+                {
+                    page,
+                    sourcePage: grid.getItemPosition(source)[0],
+                    sourcePosition: grid.getItemPosition(source)[1],
+                },
+                "verbose",
+            );
+
+            return;
+        }
 
         if (
             item === source ||
@@ -236,7 +362,7 @@ export class DndManager {
         ) {
             appDisplay._removeDelayedMove?.();
 
-            appDisplay._delayedMoveData = {
+            const delayedMoveData = {
                 page,
                 position,
                 source,
@@ -249,6 +375,20 @@ export class DndManager {
                     GLib.PRIORITY_DEFAULT,
                     DELAYED_MOVE_TIMEOUT,
                     () => {
+                        if (appDisplay._delayedMoveData !== delayedMoveData) {
+                            return;
+                        }
+
+                        if (
+                            source.is_destroyed?.() ||
+                            source.get_parent?.() !== grid ||
+                            grid.currentPage !== page ||
+                            !this._hasUsableGridGeometry(grid)
+                        ) {
+                            appDisplay._removeDelayedMove?.();
+                            return;
+                        }
+
                         appDisplay._moveItem(source, page, position);
 
                         if (appDisplay._delayedMoveData) {
@@ -259,23 +399,51 @@ export class DndManager {
                     },
                 ),
             };
+
+            appDisplay._delayedMoveData = delayedMoveData;
         }
     }
 
     _getDropTarget(appDisplay, x, y, source) {
         const grid = appDisplay?._grid;
 
-        if (!grid) {
+        if (!grid || !Number.isFinite(x) || !Number.isFinite(y)) {
             return [0, 0, IconGrid.DragLocation.INVALID];
         }
 
         const [sourcePage, sourcePosition] = grid.getItemPosition(source);
 
-        let [targetPage, targetPosition, dragLocation] = grid.getDropTarget(
-            x,
-            y,
-        );
+        const [rawTargetPage, rawTargetPosition, rawDragLocation] =
+            grid.getDropTarget(x, y);
 
+        if (
+            !Number.isInteger(rawTargetPage) ||
+            !Number.isInteger(rawTargetPosition) ||
+            rawTargetPosition < -1
+        ) {
+            return [0, 0, IconGrid.DragLocation.INVALID];
+        }
+
+        let targetPage = rawTargetPage;
+
+        let targetPosition = rawTargetPosition;
+
+        let dragLocation = rawDragLocation;
+
+        /*
+         * Keep GNOME 50's EMPTY_SPACE sentinel.
+         *
+         * -1 means "append".
+         * It must not be converted to the last icon position.
+         */
+
+        /*
+         * Extend the native horizontal edge zone.
+         *
+         * GNOME determines START_EDGE / END_EDGE using X even when
+         * the grid orientation is vertical. We intentionally keep
+         * that behavior.
+         */
         if (
             targetPosition >= 0 &&
             dragLocation === IconGrid.DragLocation.ON_ICON
@@ -321,62 +489,104 @@ export class DndManager {
             reflowDirection = Clutter.ActorAlign.START;
         }
 
+        /*
+         * Native GNOME 50 edge correction.
+         *
+         * Important: this is intentionally performed only for a
+         * real icon position. EMPTY_SPACE remains -1.
+         */
+        const nColumns = grid.layout_manager.columns_per_page;
+
         if (
+            targetPosition >= 0 &&
             dragLocation === IconGrid.DragLocation.START_EDGE &&
-            reflowDirection === Clutter.ActorAlign.START
+            reflowDirection === Clutter.ActorAlign.START &&
+            Number.isFinite(nColumns) &&
+            nColumns > 0
         ) {
-            const nColumns = grid.layout_manager.columns_per_page;
+            const targetColumn = targetPosition % nColumns;
 
-            if (Number.isFinite(nColumns) && nColumns > 0) {
-                const targetColumn = targetPosition % nColumns;
+            if (targetColumn > 0) {
+                targetPosition -= 1;
 
-                if (targetColumn > 0) {
-                    targetPosition -= 1;
-
-                    dragLocation = IconGrid.DragLocation.END_EDGE;
-                }
+                dragLocation = IconGrid.DragLocation.END_EDGE;
             }
         } else if (
+            targetPosition >= 0 &&
             dragLocation === IconGrid.DragLocation.END_EDGE &&
-            reflowDirection === Clutter.ActorAlign.END
+            reflowDirection === Clutter.ActorAlign.END &&
+            Number.isFinite(nColumns) &&
+            nColumns > 0
         ) {
-            const nColumns = grid.layout_manager.columns_per_page;
+            const targetColumn = targetPosition % nColumns;
 
-            if (Number.isFinite(nColumns) && nColumns > 0) {
-                const targetColumn = targetPosition % nColumns;
+            if (targetColumn < nColumns - 1) {
+                targetPosition += 1;
 
-                if (targetColumn < nColumns - 1) {
-                    targetPosition += 1;
-
-                    dragLocation = IconGrid.DragLocation.START_EDGE;
-                }
+                dragLocation = IconGrid.DragLocation.START_EDGE;
             }
         }
 
-        this._diagnostics?.event(
-            "dnd",
-            "Drop target changed",
-            {
-                sourcePage,
-                sourcePosition,
+        /*
+         * Diagnostics.
+         */
+        const orientation =
+            grid.layout_manager.orientation === Clutter.Orientation.VERTICAL
+                ? "vertical"
+                : "horizontal";
 
-                targetPage,
-                targetPosition,
+        const diagnosticSignature = JSON.stringify({
+            sourcePage,
+            sourcePosition,
 
-                dragLocation,
+            rawTargetPage,
+            rawTargetPosition,
+            rawDragLocation,
 
-                reflowDirection,
+            targetPage,
+            targetPosition,
+            dragLocation,
 
-                edgeZone: REORDER_EDGE_ZONE,
+            currentPage: grid.currentPage ?? -1,
+        });
 
-                orientation:
-                    grid.layout_manager.orientation ===
-                    Clutter.Orientation.VERTICAL
-                        ? "vertical"
-                        : "horizontal",
-            },
-            "verbose",
-        );
+        if (diagnosticSignature !== this._lastDropTargetDiagnostic) {
+            this._lastDropTargetDiagnostic = diagnosticSignature;
+
+            this._diagnostics?.event(
+                "dnd",
+                "Drop target changed",
+                {
+                    sourcePage,
+                    sourcePosition,
+
+                    rawTargetPage,
+                    rawTargetPosition,
+                    rawDragLocation,
+
+                    targetPage,
+                    targetPosition,
+                    dragLocation,
+
+                    reflowDirection,
+
+                    currentPage: grid.currentPage ?? -1,
+
+                    x,
+                    y,
+
+                    adjustmentValue: appDisplay?._adjustment?.value ?? null,
+
+                    adjustmentPageSize:
+                        appDisplay?._adjustment?.page_size ?? null,
+
+                    edgeZone: REORDER_EDGE_ZONE,
+
+                    orientation,
+                },
+                "verbose",
+            );
+        }
 
         return [targetPage, targetPosition, dragLocation];
     }
@@ -384,10 +594,29 @@ export class DndManager {
     _moveItem(appDisplay, item, newPage, newPosition) {
         const grid = appDisplay?._grid;
 
-        if (!grid || !item) return;
+        if (
+            !grid ||
+            !item ||
+            !this._hasUsableGridGeometry(grid) ||
+            !Number.isInteger(newPage) ||
+            newPage < 0 ||
+            !Number.isInteger(newPosition) ||
+            newPosition < -1
+        )
+            return;
 
+        /*
+         * Preserve GNOME 50 behavior exactly:
+         *
+         * newPosition === -1
+         * means append.
+         */
         grid.moveItem(item, newPage, newPosition);
 
+        /*
+         * Keep _orderedItems synchronized using GNOME's own
+         * _getLinearPosition() instead of duplicating the calculation.
+         */
         const orderedItems = appDisplay._orderedItems;
 
         if (!Array.isArray(orderedItems)) return;
@@ -398,21 +627,11 @@ export class DndManager {
 
         orderedItems.splice(oldIndex, 1);
 
+        if (typeof appDisplay._getLinearPosition === "function") {
+            orderedItems.splice(appDisplay._getLinearPosition(item), 0, item);
+        }
+
         const [itemPage, itemPosition] = grid.getItemPosition(item);
-
-        if (itemPage < 0 || itemPosition < 0) {
-            return;
-        }
-
-        let linearPosition = itemPosition;
-
-        for (let page = 0; page < itemPage; page++) {
-            linearPosition += grid
-                .getItemsAtPage(page)
-                .filter((child) => child.visible).length;
-        }
-
-        orderedItems.splice(linearPosition, 0, item);
 
         this._diagnostics?.event(
             "dnd",
@@ -420,7 +639,10 @@ export class DndManager {
             {
                 newPage: itemPage,
                 newPosition: itemPosition,
-                linearPosition,
+                linearPosition:
+                    typeof appDisplay._getLinearPosition === "function"
+                        ? appDisplay._getLinearPosition(item)
+                        : null,
             },
             "verbose",
         );
