@@ -1,5 +1,52 @@
 import Clutter from "gi://Clutter";
 import { AppGridNavigation } from "./appGridNavigation.js";
+import * as Main from "resource:///org/gnome/shell/ui/main.js";
+
+function logGridDiagnostics(tag) {
+    const appDisplay =
+        Main.overview?._overview?._controls?._appDisplay;
+
+    if (!appDisplay)
+        return;
+
+    const grid = appDisplay._grid;
+    const iconGrid = grid?._grid;
+    const scrollView = appDisplay._scrollView;
+
+    const getBox = actor => {
+        if (!actor)
+            return null;
+
+        const box = actor.get_allocation_box();
+
+        return {
+            x: box.x1,
+            y: box.y1,
+            width: box.x2 - box.x1,
+            height: box.y2 - box.y1,
+            visible: actor.visible,
+            reactive: actor.reactive,
+        };
+    };
+
+    console.log(
+        `[alt-overview] [grid-diag] ${tag} ` +
+        JSON.stringify({
+            appGrid: getBox(grid),
+            iconGrid: getBox(iconGrid),
+            scrollView: getBox(scrollView),
+
+            folders:
+                appDisplay._folderIcons?.length ?? 0,
+
+            iconGridChildren:
+                iconGrid?.get_n_children?.() ?? null,
+
+            appGridChildren:
+                grid?.get_n_children?.() ?? null,
+        }),
+    );
+}
 
 export class AppGridLayoutController {
     constructor(settings, appDisplay, iconController, diagnostics = null) {
@@ -42,6 +89,59 @@ export class AppGridLayoutController {
         this._updateLastRowAlignment();
         this._updateScrollViewFade();
     }
+
+    _logFolderLayoutDiagnostics(tag = "layout") {
+    const appDisplay =
+        Main.overview?._overview?._controls?._appDisplay;
+
+    if (!appDisplay)
+        return;
+
+    const grid = appDisplay._grid;
+    const scrollView = appDisplay._scrollView;
+    const iconGrid = grid?._grid;
+
+    const getBox = actor => {
+        if (!actor)
+            return null;
+
+        const box = actor.get_allocation_box();
+
+        return {
+            x: box.x1,
+            y: box.y1,
+            width: box.x2 - box.x1,
+            height: box.y2 - box.y1,
+            visible: actor.visible,
+            reactive: actor.reactive,
+        };
+    };
+
+    const folders = appDisplay._folderIcons ?? [];
+
+    console.log(
+        `[alt-overview] [grid-diag] ${tag} ` +
+        JSON.stringify({
+            appGrid: getBox(grid),
+            iconGrid: getBox(iconGrid),
+            scrollView: getBox(scrollView),
+
+            appGridChildren: grid?.get_n_children?.() ?? null,
+            iconGridChildren: iconGrid?.get_n_children?.() ?? null,
+
+            folders: folders.length,
+
+            gridWidth: grid?.width ?? null,
+            gridHeight: grid?.height ?? null,
+
+            iconGridWidth: iconGrid?.width ?? null,
+            iconGridHeight: iconGrid?.height ?? null,
+
+            scrollWidth: scrollView?.width ?? null,
+            scrollHeight: scrollView?.height ?? null,
+        }),
+    );
+}
 
     disable() {
         if (this._centerLastRowChangedId) {

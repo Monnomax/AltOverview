@@ -47,24 +47,12 @@ export class DndManager {
 
         if (this._enabled) return true;
 
-        this._originalMaybeMoveItem = appDisplay._maybeMoveItem;
-
         this._originalGetDropTarget = appDisplay._getDropTarget;
-
-        this._originalMoveItem = appDisplay._moveItem;
 
         const manager = this;
 
-        appDisplay._maybeMoveItem = function (dragEvent) {
-            return manager._maybeMoveItem(this, dragEvent);
-        };
-
         appDisplay._getDropTarget = function (x, y, source) {
             return manager._getDropTarget(this, x, y, source);
-        };
-
-        appDisplay._moveItem = function (item, newPage, newPosition) {
-            return manager._moveItem(this, item, newPage, newPosition);
         };
 
         this._patchAllItems();
@@ -140,24 +128,10 @@ export class DndManager {
 
         if (appDisplay) {
             if (
-                this._originalMaybeMoveItem &&
-                appDisplay._maybeMoveItem !== this._originalMaybeMoveItem
-            ) {
-                appDisplay._maybeMoveItem = this._originalMaybeMoveItem;
-            }
-
-            if (
                 this._originalGetDropTarget &&
                 appDisplay._getDropTarget !== this._originalGetDropTarget
             ) {
                 appDisplay._getDropTarget = this._originalGetDropTarget;
-            }
-
-            if (
-                this._originalMoveItem &&
-                appDisplay._moveItem !== this._originalMoveItem
-            ) {
-                appDisplay._moveItem = this._originalMoveItem;
             }
 
             try {
@@ -171,9 +145,7 @@ export class DndManager {
             }
         }
 
-        this._originalMaybeMoveItem = null;
         this._originalGetDropTarget = null;
-        this._originalMoveItem = null;
 
         this._lastDropTargetDiagnostic = null;
 
@@ -212,196 +184,19 @@ export class DndManager {
         };
     }
 
-    /*
-     * Returns true when EMPTY_SPACE would simply append the source
-     * item immediately after its current position, meaning that the
-     * source is already the last visible item on the target page.
-     *
-     * This prevents:
-     *
-     *     EMPTY_SPACE -> move -> EMPTY_SPACE -> move -> ...
-     *
-     * while the pointer remains stationary at the end of a page.
-     */
-    _isAlreadyAtAppendPosition(appDisplay, page, source) {
-        const grid = appDisplay?._grid;
-
-        if (!grid || !source || page < 0) return false;
-
-        const [sourcePage, sourcePosition] = grid.getItemPosition(source);
-
-        if (sourcePage !== page || sourcePosition < 0) {
-            return false;
-        }
-
-        const pageItems = grid
-            .getItemsAtPage(page)
-            .filter((child) => child.visible);
-
-        if (pageItems.length === 0) return false;
-
-        return sourcePosition === pageItems.length - 1;
-    }
-
-    _hasUsableGridGeometry(grid) {
-        const layout = grid?.layout_manager;
-
-        return (
-            Number.isFinite(layout?._pageWidth) &&
-            layout._pageWidth > 0 &&
-            Number.isFinite(layout?._pageHeight) &&
-            layout._pageHeight > 0 &&
-            Number.isFinite(layout?.columns_per_page) &&
-            layout.columns_per_page > 0 &&
-            Number.isFinite(layout?.rows_per_page) &&
-            layout.rows_per_page > 0
-        );
-    }
-
-    _maybeMoveItem(appDisplay, dragEvent) {
-        const grid = appDisplay?._grid;
-
-        const adjustment = appDisplay?._adjustment;
-
-        if (!grid || !dragEvent?.source) {
-            return;
-        }
-
-        if (!this._hasUsableGridGeometry(grid)) {
-            appDisplay._removeDelayedMove?.();
-            return;
-        }
+    _getEffectiveDragSource(appDisplay, source) {
+        const placeholder = appDisplay?._placeholder;
 
         if (
-            !Number.isFinite(dragEvent.x) ||
-            !Number.isFinite(dragEvent.y)
+            placeholder &&
+            source &&
+            placeholder.id === source.id &&
+            !placeholder.is_destroyed?.()
         ) {
-            appDisplay._removeDelayedMove?.();
-            return;
+            return placeholder;
         }
 
-        const [success, x, y] = grid.transform_stage_point(
-            dragEvent.x,
-            dragEvent.y,
-        );
-
-        if (
-            !success ||
-            !Number.isFinite(x) ||
-            !Number.isFinite(y)
-        ) {
-            appDisplay._removeDelayedMove?.();
-            return;
-        }
-
-        const source = dragEvent.source;
-
-        const [page, position, dragLocation] = this._getDropTarget(
-            appDisplay,
-            x,
-            y,
-            source,
-        );
-
-        if (
-            !Number.isInteger(page) ||
-            page < 0 ||
-            !Number.isInteger(position) ||
-            position < -1
-        ) {
-            appDisplay._removeDelayedMove?.();
-            return;
-        }
-
-        const item = position >= 0 ? grid.getItemAt(page, position) : null;
-
-        /*
-         * EMPTY_SPACE means append.
-         *
-         * When the source has already reached the last visible item
-         * on this page, there is nothing left to do. Without this
-         * guard a stationary pointer at the end of the page causes
-         * grid.moveItem() to execute every 100 ms.
-         */
-        if (
-            position === -1 &&
-            dragLocation === IconGrid.DragLocation.EMPTY_SPACE &&
-            this._isAlreadyAtAppendPosition(appDisplay, page, source)
-        ) {
-            appDisplay._removeDelayedMove?.();
-
-            this._diagnostics?.event(
-                "dnd",
-                "Append target already reached",
-                {
-                    page,
-                    sourcePage: grid.getItemPosition(source)[0],
-                    sourcePosition: grid.getItemPosition(source)[1],
-                },
-                "verbose",
-            );
-
-            return;
-        }
-
-        if (
-            item === source ||
-            adjustment?.get_transition("value") !== null ||
-            page !== grid.currentPage ||
-            dragLocation === IconGrid.DragLocation.INVALID ||
-            dragLocation === IconGrid.DragLocation.ON_ICON
-        ) {
-            appDisplay._removeDelayedMove?.();
-            return;
-        }
-
-        if (
-            !appDisplay._delayedMoveData ||
-            appDisplay._delayedMoveData.page !== page ||
-            appDisplay._delayedMoveData.position !== position
-        ) {
-            appDisplay._removeDelayedMove?.();
-
-            const delayedMoveData = {
-                page,
-                position,
-                source,
-
-                destroyId: source.connect("destroy", () =>
-                    appDisplay._removeDelayedMove?.(),
-                ),
-
-                timeoutId: GLib.timeout_add_once(
-                    GLib.PRIORITY_DEFAULT,
-                    DELAYED_MOVE_TIMEOUT,
-                    () => {
-                        if (appDisplay._delayedMoveData !== delayedMoveData) {
-                            return;
-                        }
-
-                        if (
-                            source.is_destroyed?.() ||
-                            source.get_parent?.() !== grid ||
-                            grid.currentPage !== page ||
-                            !this._hasUsableGridGeometry(grid)
-                        ) {
-                            appDisplay._removeDelayedMove?.();
-                            return;
-                        }
-
-                        appDisplay._moveItem(source, page, position);
-
-                        if (appDisplay._delayedMoveData) {
-                            appDisplay._delayedMoveData.timeoutId = 0;
-                        }
-
-                        appDisplay._removeDelayedMove?.();
-                    },
-                ),
-            };
-
-            appDisplay._delayedMoveData = delayedMoveData;
-        }
+        return source;
     }
 
     _getDropTarget(appDisplay, x, y, source) {
@@ -589,62 +384,5 @@ export class DndManager {
         }
 
         return [targetPage, targetPosition, dragLocation];
-    }
-
-    _moveItem(appDisplay, item, newPage, newPosition) {
-        const grid = appDisplay?._grid;
-
-        if (
-            !grid ||
-            !item ||
-            !this._hasUsableGridGeometry(grid) ||
-            !Number.isInteger(newPage) ||
-            newPage < 0 ||
-            !Number.isInteger(newPosition) ||
-            newPosition < -1
-        )
-            return;
-
-        /*
-         * Preserve GNOME 50 behavior exactly:
-         *
-         * newPosition === -1
-         * means append.
-         */
-        grid.moveItem(item, newPage, newPosition);
-
-        /*
-         * Keep _orderedItems synchronized using GNOME's own
-         * _getLinearPosition() instead of duplicating the calculation.
-         */
-        const orderedItems = appDisplay._orderedItems;
-
-        if (!Array.isArray(orderedItems)) return;
-
-        const oldIndex = orderedItems.indexOf(item);
-
-        if (oldIndex < 0) return;
-
-        orderedItems.splice(oldIndex, 1);
-
-        if (typeof appDisplay._getLinearPosition === "function") {
-            orderedItems.splice(appDisplay._getLinearPosition(item), 0, item);
-        }
-
-        const [itemPage, itemPosition] = grid.getItemPosition(item);
-
-        this._diagnostics?.event(
-            "dnd",
-            "Item moved",
-            {
-                newPage: itemPage,
-                newPosition: itemPosition,
-                linearPosition:
-                    typeof appDisplay._getLinearPosition === "function"
-                        ? appDisplay._getLinearPosition(item)
-                        : null,
-            },
-            "verbose",
-        );
     }
 }

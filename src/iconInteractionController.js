@@ -40,6 +40,11 @@ export class IconInteractionController {
         this._settings = settings;
         this._appDisplay = appDisplay;
         this._runningIndicators = new RunningIndicators();
+
+        this._viewLoadedId = appDisplay.connect("view-loaded", () =>
+            this.updateNamesVisibility(),
+        );
+
         this._openDesktopFileMenuChangedId = settings.connect(
             "changed::app-grid-show-open-desktop-file",
             () => this._updateOpenDesktopFileMenuItems(),
@@ -59,11 +64,38 @@ export class IconInteractionController {
     }
 
     updateNamesVisibility() {
-        const grid = this._appDisplay?._grid;
-        if (!grid) return;
+        const appDisplay = this._appDisplay;
+        const grid = appDisplay?._grid;
+
+        if (!appDisplay || !grid) return;
+
         const mode = this._settings.get_string("app-grid-names-visibility");
-        for (let index = 0; index < grid.get_n_children(); index++)
-            this.applyNameVisibilityMode(grid.get_child_at_index(index), mode);
+
+        const processItem = (item) => {
+            if (!item || item.is_destroyed?.()) return;
+
+            this.applyNameVisibilityMode(item, mode);
+        };
+
+        /*
+         * Основний AppGrid.
+         */
+        for (let index = 0; index < grid.get_n_children(); index++) {
+            processItem(grid.get_child_at_index(index));
+        }
+
+        /*
+         * AppIcons усередині папок.
+         *
+         * FolderView має власний AppGrid, тому звичайний цикл вище
+         * до них не доходить.
+         */
+        for (const folderIcon of appDisplay._folderIcons ?? []) {
+            const folderView = folderIcon?.view;
+
+            for (const item of folderView?.getAllItems?.() ?? [])
+                processItem(item);
+        }
     }
 
     applyNameVisibilityMode(item, mode) {
@@ -141,6 +173,11 @@ export class IconInteractionController {
             this._openDesktopFileMenuChangedId = 0;
         }
 
+        if (this._viewLoadedId) {
+            this._appDisplay.disconnect(this._viewLoadedId);
+            this._viewLoadedId = 0;
+        }
+
         if (!grid) return;
 
         for (let index = 0; index < grid.get_n_children(); index++) {
@@ -152,8 +189,7 @@ export class IconInteractionController {
             if (item._chOriginalPopupMenu) {
                 if (item._chPopupMenuHadOwnProperty)
                     item.popupMenu = item._chOriginalPopupMenu;
-                else
-                    delete item.popupMenu;
+                else delete item.popupMenu;
 
                 delete item._chOriginalPopupMenu;
                 delete item._chPopupMenuHadOwnProperty;
@@ -551,10 +587,7 @@ export class IconInteractionController {
 
         for (let index = 0; index < grid.get_n_children(); index++) {
             const item = grid.get_child_at_index(index);
-            if (
-                item?._menu &&
-                !item.has_style_class_name?.("app-folder")
-            ) {
+            if (item?._menu && !item.has_style_class_name?.("app-folder")) {
                 this._ensureOpenDesktopFileMenu(item);
             }
         }
