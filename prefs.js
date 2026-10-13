@@ -351,6 +351,22 @@ export default class OverviewBackgroundPreferences extends ExtensionPreferences 
         enableRow.add_row(grainRow);
         group.add(enableRow);
 
+        const wallpaperRow = new Adw.ActionRow({
+            title: _("Застосувати до шпалер робочого стола"),
+        });
+        const wallpaperSwitch = new Gtk.Switch({
+            valign: Gtk.Align.CENTER,
+        });
+        settings.bind(
+            "apply-to-wallpaper",
+            wallpaperSwitch,
+            "active",
+            Gio.SettingsBindFlags.DEFAULT,
+        );
+        wallpaperRow.add_suffix(wallpaperSwitch);
+        wallpaperRow.activatable_widget = wallpaperSwitch;
+        group.add(wallpaperRow);
+
         // --- Група "Елементи Огляду" ---
         const overviewElementsGroup = new Adw.PreferencesGroup({
             title: _("Елементи Огляду"),

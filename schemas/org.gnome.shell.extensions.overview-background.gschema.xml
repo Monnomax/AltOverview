@@ -9,6 +9,12 @@
             <description>Показувати зображення шпалери робочого стола як фон в Огляді.</description>
         </key>
 
+        <key name="apply-to-wallpaper" type="b">
+            <default>true</default>
+            <summary>Застосувати до шпалер робочого стола</summary>
+            <description>Якщо увімкнено, параметри яскравості, розмиття, насиченості та зернистості застосовуються до шпалер робочого стола.</description>
+        </key>
+
         <key name="brightness" type="i">
             <range min="-100" max="100" />
             <default>0</default>

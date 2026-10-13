@@ -60,10 +60,13 @@ export class BackgroundController {
     }
 
     applySettings() {
-        const brightness = this._settings.get_int("brightness");
-        const saturation = this._settings.get_double("saturation");
-        const blur = this._settings.get_int("blur");
-        const grain = this._settings.get_int("grain");
+        const applyToWallpaper = this._settings.get_boolean("apply-to-wallpaper");
+        const brightness = applyToWallpaper ? this._settings.get_int("brightness") : 0;
+        const saturation = applyToWallpaper
+            ? this._settings.get_double("saturation")
+            : 1.0;
+        const blur = applyToWallpaper ? this._settings.get_int("blur") : 0;
+        const grain = applyToWallpaper ? this._settings.get_int("grain") : 0;
 
         for (const background of this._backgrounds) {
             background.effects.setBrightness(brightness);

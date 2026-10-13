@@ -364,6 +364,9 @@ export default class OverviewBackgroundExtension extends Extension {
                 settings: this._settings
                     ? {
                           enabled: this._settings.get_boolean("enabled"),
+                          applyToWallpaper: this._settings.get_boolean(
+                              "apply-to-wallpaper",
+                          ),
                           brightness: this._settings.get_int("brightness"),
                           blur: this._settings.get_int("blur"),
                           saturation: this._settings.get_double("saturation"),
